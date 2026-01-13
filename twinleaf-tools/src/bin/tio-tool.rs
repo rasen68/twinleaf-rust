@@ -166,9 +166,18 @@ enum Commands {
     LogDump {
         /// Input log file(s)
         files: Vec<String>,
+
+        /// Show parsed data samples (like old log-data-dump)
+        #[arg(short = 'd', long = "data")]
+        data: bool,
+
+        /// Show metadata only (routes, devices, streams, columns)
+        #[arg(short = 'm', long = "meta")]
+        meta: bool,
     },
 
-    /// Dump parsed data from binary log file(s)
+    /// Dump parsed data from binary log file(s) [DEPRECATED: use log-dump -d]
+    #[command(hide = true)]
     LogDataDump {
         /// Input log file(s)
         files: Vec<String>,
@@ -686,11 +695,29 @@ fn log_metadata(tio: &TioOpts, file: String) -> Result<(), ()> {
     Ok(())
 }
 
-fn log_dump(files: Vec<String>) -> Result<(), ()> {
+fn log_dump(files: Vec<String>, data: bool, meta: bool) -> Result<(), ()> {
+    if files.is_empty() {
+        eprintln!("No input files specified");
+        return Err(());
+    }
+
+    if meta {
+        return log_dump_meta(files);
+    }
+    if data {
+        return log_dump_data(files);
+    }
+    log_dump_raw(files)
+}
+
+fn log_dump_raw(files: Vec<String>) -> Result<(), ()> {
     for path in files {
-        let mut rest: &[u8] = &std::fs::read(path).unwrap();
-        while rest.len() > 0 {
-            let (pkt, len) = tio::Packet::deserialize(rest).unwrap();
+        let data = std::fs::read(&path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
+        let mut rest: &[u8] = &data;
+        while !rest.is_empty() {
+            let (pkt, len) = tio::Packet::deserialize(rest).map_err(|_| {
+                eprintln!("Failed to parse packet");
+            })?;
             rest = &rest[len..];
             println!("{:?}", pkt);
         }
@@ -698,15 +725,18 @@ fn log_dump(files: Vec<String>) -> Result<(), ()> {
     Ok(())
 }
 
-fn log_data_dump(files: Vec<String>) -> Result<(), ()> {
-    use twinleaf::data::DeviceDataParser;
+fn log_dump_data(files: Vec<String>) -> Result<(), ()> {
     let mut parsers: HashMap<DeviceRoute, DeviceDataParser> = HashMap::new();
     let ignore_session = files.len() > 1;
 
     for path in files {
-        let mut rest: &[u8] = &std::fs::read(path).unwrap();
-        while rest.len() > 0 {
-            let (pkt, len) = tio::Packet::deserialize(rest).unwrap();
+        let data = std::fs::read(&path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
+        let mut rest: &[u8] = &data;
+        while !rest.is_empty() {
+            let (pkt, len) = match tio::Packet::deserialize(rest) {
+                Ok(res) => res,
+                Err(_) => break,
+            };
             rest = &rest[len..];
 
             let parser = parsers
@@ -719,6 +749,66 @@ fn log_data_dump(files: Vec<String>) -> Result<(), ()> {
         }
     }
     Ok(())
+}
+
+fn log_dump_meta(files: Vec<String>) -> Result<(), ()> {
+    let mut parsers: HashMap<DeviceRoute, DeviceDataParser> = HashMap::new();
+    let ignore_session = files.len() > 1;
+
+    for path in &files {
+        let data = std::fs::read(path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
+        let mut rest: &[u8] = &data;
+        while !rest.is_empty() {
+            let (pkt, len) = match tio::Packet::deserialize(rest) {
+                Ok(res) => res,
+                Err(_) => break,
+            };
+            rest = &rest[len..];
+
+            let parser = parsers
+                .entry(pkt.routing.clone())
+                .or_insert_with(|| DeviceDataParser::new(ignore_session));
+            parser.process_packet(&pkt);
+        }
+    }
+
+    if parsers.is_empty() {
+        println!("No data found in log file(s)");
+        return Ok(());
+    }
+
+    let mut routes: Vec<_> = parsers.keys().collect();
+    routes.sort();
+
+    for route in routes {
+        let parser = &parsers[route];
+        if let Ok(meta) = parser.get_metadata() {
+            println!(
+                "Route: {} ({}, {})",
+                route, meta.device.name, meta.device.serial_number
+            );
+            for (id, stream) in &meta.streams {
+                println!(
+                    "  Stream {}: {} ({} columns)",
+                    id,
+                    stream.stream.name,
+                    stream.columns.len()
+                );
+                for col in &stream.columns {
+                    println!("    - {}: {}", col.name, col.units);
+                }
+            }
+        } else {
+            println!("Route: {} (incomplete metadata)", route);
+        }
+    }
+    Ok(())
+}
+
+fn log_data_dump_deprecated(files: Vec<String>) -> Result<(), ()> {
+    eprintln!("Warning: log-data-dump is deprecated, use 'log-dump -d' instead");
+    eprintln!();
+    log_dump_data(files)
 }
 
 fn log_csv(
@@ -766,7 +856,7 @@ fn log_csv(
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
-        .open(output_path)
+        .open(&output_path)
         .or(Err(()))?;
 
     let mut header_written: bool = false;
@@ -1113,8 +1203,8 @@ fn main() -> ExitCode {
             depth,
         } => log(&tio, file, unbuffered, raw, depth),
         Commands::LogMetadata { tio, file } => log_metadata(&tio, file),
-        Commands::LogDump { files } => log_dump(files),
-        Commands::LogDataDump { files } => log_data_dump(files),
+        Commands::LogDump { files, data, meta } => log_dump(files, data, meta),
+        Commands::LogDataDump { files } => log_data_dump_deprecated(files),
         Commands::LogCsv {
             stream,
             files,
