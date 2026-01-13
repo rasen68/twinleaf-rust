@@ -619,12 +619,15 @@ fn log(
                         );
                     }
 
-                    let data_pkt = tio::Packet {
-                        payload: tio::proto::Payload::StreamData(sample.source),
-                        routing: sample_route.clone(),
-                        ttl: 0,
-                    };
-                    let _ = write_packet(data_pkt, &mut file);
+                    // Only write the data packet once (on the first sample from this packet)
+                    if sample.n == sample.source.first_sample_n {
+                        let data_pkt = tio::Packet {
+                            payload: tio::proto::Payload::StreamData(sample.source),
+                            routing: sample_route.clone(),
+                            ttl: 0,
+                        };
+                        let _ = write_packet(data_pkt, &mut file);
+                    }
                 }
             }
             Err(e) => {
@@ -873,6 +876,15 @@ fn log_hdf(
 
             for sample in parser.process_packet(&pkt) {
                 let key = StreamKey::new(pkt.routing.clone(), sample.stream.stream_id);
+
+                if debug {
+                    if let Some(ref boundary) = sample.boundary {
+                        eprintln!(
+                            "[{}] sample_n={} boundary={:?}",
+                            sample.stream.name, sample.n, boundary.reason
+                        );
+                    }
+                }
 
                 if let Err(e) = writer.write_sample(sample, key) {
                     eprintln!("HDF5 Write Error: {:?}", e);
