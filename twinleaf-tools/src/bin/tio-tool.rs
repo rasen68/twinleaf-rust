@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use tio::proto::DeviceRoute;
 use tio::proxy;
 use tio::util;
@@ -8,7 +8,6 @@ use twinleaf::tio;
 use twinleaf_tools::TioOpts;
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
@@ -23,6 +22,52 @@ use std::process::ExitCode;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+/// Controls how runs are organized in the HDF5 output
+#[derive(ValueEnum, Clone, Debug, Default)]
+enum SplitLevel {
+    /// No run splitting - flat structure: /{route}/{stream}/{datasets}
+    #[default]
+    None,
+    /// Each stream has independent run counter
+    Stream,
+    /// All streams on a device share run counter
+    Device,
+    /// All streams globally share run counter
+    Global,
+}
+
+#[cfg(feature = "hdf5")]
+impl From<SplitLevel> for twinleaf::data::export::RunSplitLevel {
+    fn from(level: SplitLevel) -> Self {
+        match level {
+            SplitLevel::None => Self::None,
+            SplitLevel::Stream => Self::PerStream,
+            SplitLevel::Device => Self::PerDevice,
+            SplitLevel::Global => Self::Global,
+        }
+    }
+}
+
+/// Controls when discontinuities trigger run splits
+#[derive(ValueEnum, Clone, Debug, Default)]
+enum SplitPolicy {
+    /// Split on any discontinuity (gaps, rate changes, etc.)
+    #[default]
+    Continuous,
+    /// Only split when time goes backward (allows gaps)
+    Monotonic,
+}
+
+#[cfg(feature = "hdf5")]
+impl From<SplitPolicy> for twinleaf::data::export::SplitPolicy {
+    fn from(policy: SplitPolicy) -> Self {
+        match policy {
+            SplitPolicy::Continuous => Self::Continuous,
+            SplitPolicy::Monotonic => Self::Monotonic,
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -155,9 +200,9 @@ enum Commands {
         /// Input log file(s)
         files: Vec<String>,
 
-        /// Output file path
-        #[arg(short = 'o', default_value = "output.h5")]
-        output: String,
+        /// Output file path (defaults to input filename with .h5 extension)
+        #[arg(short = 'o')]
+        output: Option<String>,
 
         /// Filter streams using a glob pattern (e.g. "/*/vector")
         #[arg(short = 'g', long = "glob")]
@@ -170,6 +215,14 @@ enum Commands {
         /// Enable debug output for glob matching
         #[arg(short = 'd', long)]
         debug: bool,
+
+        /// How to organize runs in the output (none=flat, stream=per-stream, device=per-device, global=all-shared)
+        #[arg(short = 'l', long = "split", default_value = "none")]
+        split_level: SplitLevel,
+
+        /// When to detect discontinuities (continuous=any gap, monotonic=only time backward)
+        #[arg(short = 'p', long = "policy", default_value = "continuous")]
+        split_policy: SplitPolicy,
     },
 
     /// Upgrade device firmware
@@ -540,46 +593,17 @@ fn log(
         return Ok(());
     }
 
-    let mut file = File::create(file).map_err(|e| {
-        eprintln!("create failed: {e:?}");
-    })?;
-
     let mut devs = DeviceTree::open(&proxy, route.clone()).map_err(|e| {
         eprintln!("open failed: {:?}", e);
     })?;
 
-    let mut seen_routes: HashSet<DeviceRoute> = HashSet::new();
+    let mut file = File::create(file).map_err(|e| {
+        eprintln!("create failed: {e:?}");
+    })?;
 
-    let write_packet = |pkt: tio::Packet, f: &mut File| -> std::io::Result<()> {
-        f.write_all(&pkt.serialize().unwrap())
+    let write_packet = |pkt: tio::Packet, f: &mut File| {
+        let _ = f.write_all(&pkt.serialize().unwrap());
     };
-
-    match devs.get_metadata(route.clone()) {
-        Ok(meta) => {
-            seen_routes.insert(route.clone());
-
-            let _ = write_packet(meta.device.make_update_with_route(route.clone()), &mut file);
-            for (_id, stream) in meta.streams {
-                let _ = write_packet(
-                    stream.stream.make_update_with_route(route.clone()),
-                    &mut file,
-                );
-                let _ = write_packet(
-                    stream.segment.make_update_with_route(route.clone()),
-                    &mut file,
-                );
-                for col in stream.columns {
-                    let _ = write_packet(col.make_update_with_route(route.clone()), &mut file);
-                }
-            }
-            if unbuffered {
-                let _ = file.flush();
-            }
-        }
-        Err(e) => {
-            eprintln!("Note: Initial metadata fetch skipped: {:?}", e);
-        }
-    }
 
     println!("Logging data...");
 
@@ -587,46 +611,36 @@ fn log(
         match devs.drain() {
             Ok(batch) => {
                 for (sample, sample_route) in batch {
-                    let is_new_device = seen_routes.insert(sample_route.clone());
-                    let force_header = is_new_device;
-
-                    let is_discontinuity = !sample.is_continuous();
-                    let has_boundary = sample.boundary.is_some();
-
-                    if is_discontinuity || force_header {
-                        let _ = write_packet(
+                    // Write metadata on any boundary (Initial, SessionChanged, SegmentChanged, etc.)
+                    if sample.boundary.is_some() {
+                        write_packet(
                             sample.device.make_update_with_route(sample_route.clone()),
                             &mut file,
                         );
-                        let _ = write_packet(
+                        write_packet(
                             sample.stream.make_update_with_route(sample_route.clone()),
                             &mut file,
                         );
-                        let _ = write_packet(
+                        write_packet(
                             sample.segment.make_update_with_route(sample_route.clone()),
                             &mut file,
                         );
                         for col in &sample.columns {
-                            let _ = write_packet(
+                            write_packet(
                                 col.desc.make_update_with_route(sample_route.clone()),
                                 &mut file,
                             );
                         }
-                    } else if has_boundary {
-                        let _ = write_packet(
-                            sample.segment.make_update_with_route(sample_route.clone()),
-                            &mut file,
-                        );
                     }
 
-                    // Only write the data packet once (on the first sample from this packet)
+                    // Write data packet once (first sample from this packet)
                     if sample.n == sample.source.first_sample_n {
                         let data_pkt = tio::Packet {
                             payload: tio::proto::Payload::StreamData(sample.source),
-                            routing: sample_route.clone(),
+                            routing: sample_route,
                             ttl: 0,
                         };
-                        let _ = write_packet(data_pkt, &mut file);
+                        write_packet(data_pkt, &mut file);
                     }
                 }
             }
@@ -637,10 +651,7 @@ fn log(
         }
 
         if unbuffered {
-            if let Err(e) = file.flush() {
-                eprintln!("flush error: {e:?}");
-                break;
-            }
+            let _ = file.flush();
         }
     }
     Ok(())
@@ -809,10 +820,12 @@ fn log_csv(
 #[cfg(feature = "hdf5")]
 fn log_hdf(
     files: Vec<String>,
-    output: String,
+    output: Option<String>,
     filter: Option<String>,
     compress: bool,
     debug: bool,
+    split_level: SplitLevel,
+    split_policy: SplitPolicy,
 ) -> Result<(), ()> {
     use indicatif::{ProgressBar, ProgressStyle};
     use memmap2::Mmap;
@@ -822,6 +835,29 @@ fn log_hdf(
     use twinleaf::data::{export, ColumnFilter, DeviceDataParser};
     use twinleaf::tio;
     use twinleaf::tio::proto::identifiers::StreamKey;
+
+    if files.is_empty() {
+        eprintln!("No input files specified");
+        return Err(());
+    }
+
+    // Determine output filename
+    let output = match output {
+        Some(o) => o,
+        None => {
+            let input_path = Path::new(&files[0]);
+            let stem = input_path.file_stem().unwrap_or_default().to_string_lossy();
+            let base = format!("{}.h5", stem);
+            if !Path::new(&base).exists() {
+                base
+            } else {
+                (1..=1000)
+                    .map(|i| format!("{}_{}.h5", stem, i))
+                    .find(|name| !Path::new(name).exists())
+                    .ok_or_else(|| eprintln!("Could not find available output filename"))?
+            }
+        }
+    };
 
     // Parse filter upfront
     let col_filter = if let Some(p) = filter {
@@ -837,9 +873,16 @@ fn log_hdf(
     };
 
     // Create writer with filter baked in
-    let mut writer =
-        export::Hdf5Appender::new(Path::new(&output), compress, debug, col_filter, 65_536)
-            .map_err(|e| eprintln!("Failed to create HDF5 file: {:?}", e))?;
+    let mut writer = export::Hdf5Appender::with_options(
+        Path::new(&output),
+        compress,
+        debug,
+        col_filter,
+        65_536,
+        split_policy.into(),
+        split_level.into(),
+    )
+    .map_err(|e| eprintln!("Failed to create HDF5 file: {:?}", e))?;
 
     let mut parsers: HashMap<tio::proto::DeviceRoute, DeviceDataParser> = HashMap::new();
     let ignore_session = files.len() > 1;
@@ -930,10 +973,12 @@ fn log_hdf(
 #[cfg(not(feature = "hdf5"))]
 fn log_hdf(
     _files: Vec<String>,
-    _output: String,
+    _output: Option<String>,
     _filter: Option<String>,
     _compress: bool,
     _debug: bool,
+    _split_level: SplitLevel,
+    _split_policy: SplitPolicy,
 ) -> Result<(), ()> {
     eprintln!("Error: This version of tio-tool was compiled without HDF5 support.");
     eprintln!("To enable it, reinstall with:");
@@ -1083,7 +1128,17 @@ fn main() -> ExitCode {
             filter,
             compress,
             debug,
-        } => log_hdf(files, output, filter, compress, debug),
+            split_level,
+            split_policy,
+        } => log_hdf(
+            files,
+            output,
+            filter,
+            compress,
+            debug,
+            split_level,
+            split_policy,
+        ),
         Commands::FirmwareUpgrade { tio, firmware_path } => firmware_upgrade(&tio, firmware_path),
         Commands::DataDump { tio } => data_dump(&tio),
         Commands::DataDumpAll { tio } => data_dump_all(&tio),

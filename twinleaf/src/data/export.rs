@@ -1,6 +1,6 @@
 use crate::data::sample::Sample;
 use crate::data::ColumnFilter;
-use crate::tio::proto::identifiers::{ColumnId, SampleNumber, StreamKey};
+use crate::tio::proto::identifiers::{ColumnId, DeviceRoute, SampleNumber, StreamKey};
 use crate::tio::proto::{BufferType, ColumnMetadata, SegmentMetadata, StreamMetadata};
 use hdf5::filters::{Blosc, BloscShuffle};
 use hdf5::types::VarLenUnicode;
@@ -21,6 +21,20 @@ pub enum SplitPolicy {
     Monotonic,
 }
 
+/// Controls the granularity of run splitting in the HDF5 output.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RunSplitLevel {
+    /// No run splitting - flat structure: /{route}/{stream}/{datasets}
+    #[default]
+    None,
+    /// Each stream has independent run counter: /{route}/{stream}/run_{id}/{datasets}
+    PerStream,
+    /// All streams on a device share run counter: /{route}/run_{id}/{stream}/{datasets}
+    PerDevice,
+    /// All streams globally share run counter: /run_{id}/{route}/{stream}/{datasets}
+    Global,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ExportStats {
     pub total_samples: u64,
@@ -36,7 +50,6 @@ enum ColumnBatch {
 }
 
 struct PendingBatch {
-    run_id: RunId,
     sample_numbers: Vec<SampleNumber>,
     timestamps: Vec<f64>,
     columns: HashMap<ColumnId, ColumnBatch>,
@@ -48,9 +61,8 @@ struct PendingBatch {
 }
 
 impl PendingBatch {
-    fn new(sample: &Sample, run_id: RunId) -> Self {
+    fn new(sample: &Sample) -> Self {
         Self {
-            run_id,
             sample_numbers: Vec::new(),
             timestamps: Vec::new(),
             columns: HashMap::new(),
@@ -104,7 +116,6 @@ impl PendingBatch {
 
     fn drain(&mut self) -> PendingBatch {
         let batch = PendingBatch {
-            run_id: self.run_id,
             sample_numbers: std::mem::take(&mut self.sample_numbers),
             timestamps: std::mem::take(&mut self.timestamps),
             columns: std::mem::take(&mut self.columns),
@@ -128,6 +139,10 @@ pub struct Hdf5Appender {
     debug: bool,
     batch_size: usize,
     split_policy: SplitPolicy,
+    split_level: RunSplitLevel,
+    stream_runs: HashMap<StreamKey, RunId>,
+    device_runs: HashMap<DeviceRoute, RunId>,
+    global_run: RunId,
     seen_debug: HashSet<String>,
     stats: ExportStats,
 }
@@ -140,13 +155,14 @@ impl Hdf5Appender {
         filter: Option<ColumnFilter>,
         batch_size: usize,
     ) -> Result<Self> {
-        Self::with_policy(
+        Self::with_options(
             path,
             compress,
             debug,
             filter,
             batch_size,
             SplitPolicy::default(),
+            RunSplitLevel::default(),
         )
     }
 
@@ -158,10 +174,26 @@ impl Hdf5Appender {
         batch_size: usize,
         split_policy: SplitPolicy,
     ) -> Result<Self> {
-        if path.exists() {
-            panic!("Refusing to overwrite existing file: {:?}", path);
-        }
+        Self::with_options(
+            path,
+            compress,
+            debug,
+            filter,
+            batch_size,
+            split_policy,
+            RunSplitLevel::default(),
+        )
+    }
 
+    pub fn with_options(
+        path: &Path,
+        compress: bool,
+        debug: bool,
+        filter: Option<ColumnFilter>,
+        batch_size: usize,
+        split_policy: SplitPolicy,
+        split_level: RunSplitLevel,
+    ) -> Result<Self> {
         Ok(Self {
             file: File::create(path)?,
             datasets: HashMap::new(),
@@ -171,6 +203,10 @@ impl Hdf5Appender {
             debug,
             batch_size,
             split_policy,
+            split_level,
+            stream_runs: HashMap::new(),
+            device_runs: HashMap::new(),
+            global_run: 0,
             seen_debug: HashSet::new(),
             stats: ExportStats::default(),
         })
@@ -183,12 +219,11 @@ impl Hdf5Appender {
         };
 
         if should_split {
-            self.flush_and_advance_run(&key)?;
+            self.handle_discontinuity(&key)?;
         }
 
         if !self.pending.contains_key(&key) {
-            self.pending
-                .insert(key.clone(), PendingBatch::new(&sample, 0));
+            self.pending.insert(key.clone(), PendingBatch::new(&sample));
         }
 
         self.pending.get_mut(&key).unwrap().push(&sample);
@@ -200,17 +235,90 @@ impl Hdf5Appender {
         Ok(())
     }
 
-    fn flush_and_advance_run(&mut self, key: &StreamKey) -> Result<()> {
-        if let Some(mut batch) = self.pending.remove(key) {
-            if !batch.is_empty() {
-                let drained = batch.drain();
-                self.write_batch(key, drained)?;
+    fn handle_discontinuity(&mut self, key: &StreamKey) -> Result<()> {
+        match self.split_level {
+            RunSplitLevel::None => {
+                self.flush_stream(key)?;
             }
-            batch.run_id += 1;
-            batch.is_first_chunk = true;
-            self.pending.insert(key.clone(), batch);
+            RunSplitLevel::PerStream => {
+                self.flush_stream(key)?;
+                if let Some(batch) = self.pending.get_mut(key) {
+                    batch.is_first_chunk = true;
+                }
+                *self.stream_runs.entry(key.clone()).or_insert(0) += 1;
+            }
+            RunSplitLevel::PerDevice => {
+                self.flush_all_for_device(&key.route)?;
+                *self.device_runs.entry(key.route.clone()).or_insert(0) += 1;
+            }
+            RunSplitLevel::Global => {
+                self.flush_all()?;
+                self.global_run += 1;
+            }
         }
         Ok(())
+    }
+
+    fn flush_all_for_device(&mut self, route: &DeviceRoute) -> Result<()> {
+        let keys: Vec<_> = self
+            .pending
+            .keys()
+            .filter(|k| &k.route == route)
+            .cloned()
+            .collect();
+        for key in keys {
+            self.flush_stream(&key)?;
+            if let Some(batch) = self.pending.get_mut(&key) {
+                batch.is_first_chunk = true;
+            }
+        }
+        Ok(())
+    }
+
+    fn flush_all(&mut self) -> Result<()> {
+        let keys: Vec<_> = self.pending.keys().cloned().collect();
+        for key in keys {
+            self.flush_stream(&key)?;
+            if let Some(batch) = self.pending.get_mut(&key) {
+                batch.is_first_chunk = true;
+            }
+        }
+        Ok(())
+    }
+
+    fn make_group_path(&self, route_str: &str, stream_name: &str, key: &StreamKey) -> String {
+        match self.split_level {
+            RunSplitLevel::None => {
+                if route_str.is_empty() {
+                    format!("/{}", stream_name)
+                } else {
+                    format!("/{}/{}", route_str, stream_name)
+                }
+            }
+            RunSplitLevel::PerStream => {
+                let run_id = self.stream_runs.get(key).copied().unwrap_or(0);
+                if route_str.is_empty() {
+                    format!("/{}/run_{:06}", stream_name, run_id)
+                } else {
+                    format!("/{}/{}/run_{:06}", route_str, stream_name, run_id)
+                }
+            }
+            RunSplitLevel::PerDevice => {
+                let run_id = self.device_runs.get(&key.route).copied().unwrap_or(0);
+                if route_str.is_empty() {
+                    format!("/run_{:06}/{}", run_id, stream_name)
+                } else {
+                    format!("/{}/run_{:06}/{}", route_str, run_id, stream_name)
+                }
+            }
+            RunSplitLevel::Global => {
+                if route_str.is_empty() {
+                    format!("/run_{:06}/{}", self.global_run, stream_name)
+                } else {
+                    format!("/run_{:06}/{}/{}", self.global_run, route_str, stream_name)
+                }
+            }
+        }
     }
 
     fn flush_stream(&mut self, key: &StreamKey) -> Result<()> {
@@ -268,17 +376,13 @@ impl Hdf5Appender {
             return Ok(());
         }
 
-        let group_path = if route_str.is_empty() {
-            format!("/run_{:06}/{}", batch.run_id, stream_name)
-        } else {
-            format!("/{}/run_{:06}/{}", route_str, batch.run_id, stream_name)
-        };
+        let group_path = self.make_group_path(&route_str, stream_name, key);
 
         self.ensure_group(&group_path)?;
         let group = self.file.group(&group_path)?;
 
         if batch.is_first_chunk {
-            self.write_metadata_attributes(&group, &batch)?;
+            self.write_metadata_attributes(&group, &batch, key)?;
         }
 
         self.append_dataset(
@@ -329,14 +433,23 @@ impl Hdf5Appender {
         Ok(())
     }
 
-    fn write_metadata_attributes(&self, group: &Group, batch: &PendingBatch) -> Result<()> {
+    fn write_metadata_attributes(
+        &self,
+        group: &Group,
+        batch: &PendingBatch,
+        key: &StreamKey,
+    ) -> Result<()> {
         let meta = &batch.segment_metadata;
         self.write_attr_scalar(group, "sampling_rate", &meta.sampling_rate)?;
         self.write_attr_scalar(group, "decimation", &meta.decimation)?;
         self.write_attr_scalar(group, "start_time", &meta.start_time)?;
         self.write_attr_scalar(group, "filter_cutoff", &meta.filter_cutoff)?;
         self.write_attr_scalar(group, "session_id", &batch.session_id)?;
-        self.write_attr_scalar(group, "run_id", &batch.run_id)?;
+
+        let run_id = self.get_run_id(key);
+        if let Some(id) = run_id {
+            self.write_attr_scalar(group, "run_id", &id)?;
+        }
 
         let epoch_u8: u8 = meta.time_ref_epoch.clone().into();
         self.write_attr_scalar(group, "time_ref_epoch", &epoch_u8)?;
@@ -348,6 +461,17 @@ impl Hdf5Appender {
             self.write_attr_string(group, "time_ref_serial", &meta.time_ref_serial)?;
         }
         Ok(())
+    }
+
+    fn get_run_id(&self, key: &StreamKey) -> Option<RunId> {
+        match self.split_level {
+            RunSplitLevel::None => None,
+            RunSplitLevel::PerStream => Some(self.stream_runs.get(key).copied().unwrap_or(0)),
+            RunSplitLevel::PerDevice => {
+                Some(self.device_runs.get(&key.route).copied().unwrap_or(0))
+            }
+            RunSplitLevel::Global => Some(self.global_run),
+        }
     }
 
     fn append_dataset<T: H5Type + Clone>(
