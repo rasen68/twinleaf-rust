@@ -120,13 +120,21 @@ enum Commands {
         capture: bool,
     },
 
-    /// Dump raw packets from the device
+    /// Dump data from a live device
     Dump {
         #[command(flatten)]
         tio: TioOpts,
 
-        /// Dump depth (default: dump everything)
-        #[arg(short = 'd', long = "depth")]
+        /// Show parsed data samples
+        #[arg(short = 'd', long = "data")]
+        data: bool,
+
+        /// Show metadata on boundaries
+        #[arg(short = 'm', long = "meta")]
+        meta: bool,
+
+        /// Routing depth limit (default: unlimited)
+        #[arg(long = "depth")]
         depth: Option<usize>,
     },
 
@@ -147,8 +155,8 @@ enum Commands {
         #[arg(long)]
         raw: bool,
 
-        /// Packet depth (only used in --raw mode)
-        #[arg(short = 'd', long = "depth")]
+        /// Routing depth (only used in --raw mode)
+        #[arg(long = "depth")]
         depth: Option<usize>,
     },
 
@@ -162,18 +170,26 @@ enum Commands {
         file: String,
     },
 
-    /// Dump packets from binary log file(s)
+    /// Dump data from binary log file(s)
     LogDump {
         /// Input log file(s)
         files: Vec<String>,
 
-        /// Show parsed data samples (like old log-data-dump)
+        /// Show parsed data samples
         #[arg(short = 'd', long = "data")]
         data: bool,
 
-        /// Show metadata only (routes, devices, streams, columns)
+        /// Show metadata on boundaries
         #[arg(short = 'm', long = "meta")]
         meta: bool,
+
+        /// Sensor path in the sensor tree (e.g., /, /0, /0/1)
+        #[arg(short = 's', long = "sensor", default_value = "/")]
+        sensor: String,
+
+        /// Routing depth limit (default: unlimited)
+        #[arg(long = "depth")]
+        depth: Option<usize>,
     },
 
     /// Dump parsed data from binary log file(s) [DEPRECATED: use log-dump -d]
@@ -243,19 +259,22 @@ enum Commands {
         firmware_path: String,
     },
 
-    /// Dump data samples from the device
+    /// Dump data samples from the device [DEPRECATED: use dump -d -s <ROUTE>]
+    #[command(hide = true)]
     DataDump {
         #[command(flatten)]
         tio: TioOpts,
     },
 
-    /// Dump data samples from all devices in the tree
+    /// Dump data samples from all devices in the tree [DEPRECATED: use dump -a -d]
+    #[command(hide = true)]
     DataDumpAll {
         #[command(flatten)]
         tio: TioOpts,
     },
 
-    /// Dump device metadata
+    /// Dump device metadata [DEPRECATED: use dump -m -s <ROUTE>]
+    #[command(hide = true)]
     MetaDump {
         #[command(flatten)]
         tio: TioOpts,
@@ -467,82 +486,56 @@ fn rpc_dump(tio: &TioOpts, rpc_name: String, is_capture: bool) -> Result<(), ()>
     Ok(())
 }
 
-fn dump(tio: &TioOpts, depth: Option<usize>) -> Result<(), ()> {
-    let depth = depth.unwrap_or(tio::proto::TIO_PACKET_MAX_ROUTING_SIZE);
-
-    let proxy = proxy::Interface::new(&tio.root);
-    let route = tio.parse_route();
-    let port = proxy
-        .new_port(None, route, depth, true, true)
-        .map_err(|e| {
-            eprintln!("Failed to initialize proxy port: {:?}", e);
-        })?;
-
-    for pkt in port.iter() {
-        println!("{:?}", pkt);
-    }
-    Ok(())
-}
-
-fn meta_dump(tio: &TioOpts) -> Result<(), ()> {
+fn dump(tio: &TioOpts, data: bool, meta: bool, depth: Option<usize>) -> Result<(), ()> {
     let proxy = proxy::Interface::new(&tio.root);
     let route = tio.parse_route();
 
-    let mut device = Device::open(&proxy, route).map_err(|e| {
-        eprintln!("Failed to open device: {:?}", e);
-    })?;
+    // max_depth: None means unlimited (default), Some(n) limits to n levels
+    let max_depth = depth;
 
-    let meta = device.get_metadata().map_err(|e| {
-        eprintln!("Failed to get metadata: {:?}", e);
-    })?;
-
-    println!("{:?}", meta.device);
-    for (_id, stream) in meta.streams {
-        println!("{:?}", stream.stream);
-        println!("{:?}", stream.segment);
-        for col in stream.columns {
-            println!("{:?}", col);
+    let route_matches = |sample_route: &DeviceRoute| -> bool {
+        match route.relative_route(sample_route) {
+            Ok(rel) => max_depth.map_or(true, |max| rel.len() <= max),
+            Err(_) => false,
         }
-    }
-    Ok(())
-}
-
-fn print_sample(sample: &twinleaf::data::Sample, route: Option<&DeviceRoute>) {
-    let route_str = if let Some(r) = route {
-        format!("{} ", r)
-    } else {
-        "".to_string()
     };
 
-    if let Some(boundary) = &sample.boundary {
-        eprintln!("[DEBUG] Boundary reason: {:?}", boundary.reason);
+    // Raw mode (no flags): use raw port for packet dump
+    if !data && !meta {
+        let port_depth = max_depth.unwrap_or(tio::proto::TIO_PACKET_MAX_ROUTING_SIZE);
+        let port = proxy
+            .new_port(None, route, port_depth, true, true)
+            .map_err(|e| {
+                eprintln!("Failed to initialize proxy port: {:?}", e);
+            })?;
 
-        if !boundary.is_continuous() {
-            println!("# {}DEVICE {:?}", route_str, sample.device);
-            println!("# {}STREAM {:?}", route_str, sample.stream);
-            for col in &sample.columns {
-                println!("# {}COLUMN {:?}", route_str, col.desc);
-            }
+        for pkt in port.iter() {
+            println!("{:?}", pkt);
         }
-        println!("# {}SEGMENT {:?}", route_str, sample.segment);
+        return Ok(());
     }
 
-    println!("{}{}", route_str, sample);
-}
-
-fn data_dump(tio: &TioOpts) -> Result<(), ()> {
-    let proxy = proxy::Interface::new(&tio.root);
-    let route = tio.parse_route();
-
-    let mut device = Device::open(&proxy, route).map_err(|e| {
-        eprintln!("Failed to open device: {:?}", e);
+    // Parsed mode (-d and/or -m): use DeviceTree for proper metadata handling
+    let mut tree = DeviceTree::open(&proxy, route.clone()).map_err(|e| {
+        eprintln!("Failed to open device tree: {:?}", e);
     })?;
 
     loop {
-        match device.next() {
-            Ok(sample) => print_sample(&sample, None),
+        match tree.next() {
+            Ok((sample, sample_route)) => {
+                if !route_matches(&sample_route) {
+                    continue;
+                }
+
+                let route_opt = if max_depth.map_or(true, |d| d > 0) {
+                    Some(&sample_route)
+                } else {
+                    None
+                };
+                print_sample(&sample, route_opt, meta, data);
+            }
             Err(e) => {
-                eprintln!("\nDevice error: {:?}. Exiting.", e);
+                eprintln!("Device error: {:?}", e);
                 break;
             }
         }
@@ -550,25 +543,54 @@ fn data_dump(tio: &TioOpts) -> Result<(), ()> {
     Ok(())
 }
 
-fn data_dump_all(tio: &TioOpts) -> Result<(), ()> {
-    let proxy = proxy::Interface::new(&tio.root);
-    let route = tio.parse_route();
+fn print_sample(
+    sample: &twinleaf::data::Sample,
+    route: Option<&DeviceRoute>,
+    print_meta: bool,
+    print_data: bool,
+) {
+    let route_str = if let Some(r) = route {
+        format!("{} ", r)
+    } else {
+        "".to_string()
+    };
 
-    let mut devs = twinleaf::device::DeviceTree::open(&proxy, route).map_err(|e| {
-        eprintln!("open failed: {:?}", e);
-    })?;
-
-    loop {
-        match devs.drain() {
-            Ok(batch) => {
-                for (s, r) in batch {
-                    print_sample(&s, Some(&r));
+    if print_meta {
+        if let Some(boundary) = &sample.boundary {
+            println!("# {}BOUNDARY {:?}", route_str, boundary.reason);
+            if !boundary.is_continuous() {
+                println!("# {}DEVICE {:?}", route_str, sample.device);
+                println!("# {}STREAM {:?}", route_str, sample.stream);
+                for col in &sample.columns {
+                    println!("# {}COLUMN {:?}", route_str, col.desc);
                 }
             }
-            Err(_) => break,
+            println!("# {}SEGMENT {:?}", route_str, sample.segment);
         }
     }
-    Ok(())
+
+    if print_data {
+        println!("{}{}", route_str, sample);
+    }
+}
+
+// Deprecated wrappers
+fn data_dump_deprecated(tio: &TioOpts) -> Result<(), ()> {
+    eprintln!("Warning: data-dump is deprecated, use 'dump -d -m --depth 0' instead");
+    eprintln!();
+    dump(tio, true, true, Some(0))
+}
+
+fn data_dump_all_deprecated(tio: &TioOpts) -> Result<(), ()> {
+    eprintln!("Warning: data-dump-all is deprecated, use 'dump -d -m' instead");
+    eprintln!();
+    dump(tio, true, true, None)
+}
+
+fn meta_dump_deprecated(tio: &TioOpts) -> Result<(), ()> {
+    eprintln!("Warning: meta-dump is deprecated, use 'dump -m --depth 0' instead");
+    eprintln!();
+    dump(tio, false, true, Some(0))
 }
 
 fn log(
@@ -695,120 +717,111 @@ fn log_metadata(tio: &TioOpts, file: String) -> Result<(), ()> {
     Ok(())
 }
 
-fn log_dump(files: Vec<String>, data: bool, meta: bool) -> Result<(), ()> {
+fn log_dump(
+    files: Vec<String>,
+    data: bool,
+    meta: bool,
+    sensor: String,
+    depth: Option<usize>,
+) -> Result<(), ()> {
+    use std::collections::HashSet;
+
     if files.is_empty() {
         eprintln!("No input files specified");
         return Err(());
     }
 
-    if meta {
-        return log_dump_meta(files);
-    }
-    if data {
-        return log_dump_data(files);
-    }
-    log_dump_raw(files)
-}
+    let target_route = DeviceRoute::from_str(&sensor).unwrap_or_else(|_| DeviceRoute::root());
 
-fn log_dump_raw(files: Vec<String>) -> Result<(), ()> {
-    for path in files {
-        let data = std::fs::read(&path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
-        let mut rest: &[u8] = &data;
-        while !rest.is_empty() {
-            let (pkt, len) = tio::Packet::deserialize(rest).map_err(|_| {
-                eprintln!("Failed to parse packet");
-            })?;
-            rest = &rest[len..];
-            println!("{:?}", pkt);
+    // max_depth: None means unlimited (default), Some(n) limits to n levels
+    let max_depth = depth;
+
+    let route_matches = |route: &DeviceRoute| -> bool {
+        match target_route.relative_route(route) {
+            Ok(rel) => max_depth.map_or(true, |max| rel.len() <= max),
+            Err(_) => false,
         }
-    }
-    Ok(())
-}
+    };
 
-fn log_dump_data(files: Vec<String>) -> Result<(), ()> {
-    let mut parsers: HashMap<DeviceRoute, DeviceDataParser> = HashMap::new();
-    let ignore_session = files.len() > 1;
+    let in_subtree = |route: &DeviceRoute| -> bool { target_route.relative_route(route).is_ok() };
 
-    for path in files {
-        let data = std::fs::read(&path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
-        let mut rest: &[u8] = &data;
-        while !rest.is_empty() {
-            let (pkt, len) = match tio::Packet::deserialize(rest) {
-                Ok(res) => res,
-                Err(_) => break,
-            };
-            rest = &rest[len..];
+    let mut printed_any = false;
+    let mut deeper_routes: HashSet<DeviceRoute> = HashSet::new();
 
-            let parser = parsers
-                .entry(pkt.routing.clone())
-                .or_insert_with(|| DeviceDataParser::new(ignore_session));
-
-            for sample in parser.process_packet(&pkt) {
-                print_sample(&sample, Some(&pkt.routing));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn log_dump_meta(files: Vec<String>) -> Result<(), ()> {
-    let mut parsers: HashMap<DeviceRoute, DeviceDataParser> = HashMap::new();
-    let ignore_session = files.len() > 1;
-
-    for path in &files {
-        let data = std::fs::read(path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
-        let mut rest: &[u8] = &data;
-        while !rest.is_empty() {
-            let (pkt, len) = match tio::Packet::deserialize(rest) {
-                Ok(res) => res,
-                Err(_) => break,
-            };
-            rest = &rest[len..];
-
-            let parser = parsers
-                .entry(pkt.routing.clone())
-                .or_insert_with(|| DeviceDataParser::new(ignore_session));
-            parser.process_packet(&pkt);
-        }
-    }
-
-    if parsers.is_empty() {
-        println!("No data found in log file(s)");
-        return Ok(());
-    }
-
-    let mut routes: Vec<_> = parsers.keys().collect();
-    routes.sort();
-
-    for route in routes {
-        let parser = &parsers[route];
-        if let Ok(meta) = parser.get_metadata() {
-            println!(
-                "Route: {} ({}, {})",
-                route, meta.device.name, meta.device.serial_number
-            );
-            for (id, stream) in &meta.streams {
-                println!(
-                    "  Stream {}: {} ({} columns)",
-                    id,
-                    stream.stream.name,
-                    stream.columns.len()
-                );
-                for col in &stream.columns {
-                    println!("    - {}: {}", col.name, col.units);
+    // Raw mode (no -d or -m): dump raw packets
+    if !data && !meta {
+        for path in files {
+            let file_data =
+                std::fs::read(&path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
+            let mut rest: &[u8] = &file_data;
+            while !rest.is_empty() {
+                let (pkt, len) = tio::Packet::deserialize(rest).map_err(|_| {
+                    eprintln!("Failed to parse packet");
+                })?;
+                rest = &rest[len..];
+                if route_matches(&pkt.routing) {
+                    println!("{:?}", pkt);
+                    printed_any = true;
+                } else if in_subtree(&pkt.routing) {
+                    deeper_routes.insert(pkt.routing.clone());
                 }
             }
-        } else {
-            println!("Route: {} (incomplete metadata)", route);
+        }
+    } else {
+        // Parsed mode (-d and/or -m): stream samples with print_sample
+        let mut parsers: HashMap<DeviceRoute, DeviceDataParser> = HashMap::new();
+        let ignore_session = files.len() > 1;
+
+        for path in files {
+            let file_data =
+                std::fs::read(&path).map_err(|e| eprintln!("Failed to read {}: {}", path, e))?;
+            let mut rest: &[u8] = &file_data;
+            while !rest.is_empty() {
+                let (pkt, len) = match tio::Packet::deserialize(rest) {
+                    Ok(res) => res,
+                    Err(_) => break,
+                };
+                rest = &rest[len..];
+
+                // Always process packet (for metadata building), but only print if route matches
+                let parser = parsers
+                    .entry(pkt.routing.clone())
+                    .or_insert_with(|| DeviceDataParser::new(ignore_session));
+
+                for sample in parser.process_packet(&pkt) {
+                    if route_matches(&pkt.routing) {
+                        print_sample(&sample, Some(&pkt.routing), meta, data);
+                        printed_any = true;
+                    } else if in_subtree(&pkt.routing) {
+                        deeper_routes.insert(pkt.routing.clone());
+                    }
+                }
+            }
         }
     }
+
+    // Warn if nothing printed but data exists at deeper routes
+    if !printed_any && !deeper_routes.is_empty() {
+        let mut routes: Vec<_> = deeper_routes.into_iter().collect();
+        routes.sort();
+        eprintln!("No data at route {}, but found data at:", sensor);
+        for r in routes.iter().take(5) {
+            eprintln!("  {}", r);
+        }
+        if routes.len() > 5 {
+            eprintln!("  ... and {} more", routes.len() - 5);
+        }
+        eprintln!();
+        eprintln!("Use -s to specify a different route, or remove --depth to include all");
+    }
+
     Ok(())
 }
 
 fn log_data_dump_deprecated(files: Vec<String>) -> Result<(), ()> {
-    eprintln!("Warning: log-data-dump is deprecated, use 'log-dump -d' instead");
+    eprintln!("Warning: log-data-dump is deprecated, use 'log-dump -d -m' instead");
     eprintln!();
-    log_dump_data(files)
+    log_dump(files, true, true, "/".to_string(), None)
 }
 
 fn log_csv(
@@ -1211,7 +1224,12 @@ fn main() -> ExitCode {
             rpc_name,
             capture,
         } => rpc_dump(&tio, rpc_name, capture),
-        Commands::Dump { tio, depth } => dump(&tio, depth),
+        Commands::Dump {
+            tio,
+            data,
+            meta,
+            depth,
+        } => dump(&tio, data, meta, depth),
         Commands::Log {
             tio,
             file,
@@ -1220,7 +1238,13 @@ fn main() -> ExitCode {
             depth,
         } => log(&tio, file, unbuffered, raw, depth),
         Commands::LogMetadata { tio, file } => log_metadata(&tio, file),
-        Commands::LogDump { files, data, meta } => log_dump(files, data, meta),
+        Commands::LogDump {
+            files,
+            data,
+            meta,
+            sensor,
+            depth,
+        } => log_dump(files, data, meta, sensor, depth),
         Commands::LogDataDump { files } => log_data_dump_deprecated(files),
         Commands::LogCsv {
             stream,
@@ -1247,9 +1271,9 @@ fn main() -> ExitCode {
             split_policy,
         ),
         Commands::FirmwareUpgrade { tio, firmware_path } => firmware_upgrade(&tio, firmware_path),
-        Commands::DataDump { tio } => data_dump(&tio),
-        Commands::DataDumpAll { tio } => data_dump_all(&tio),
-        Commands::MetaDump { tio } => meta_dump(&tio),
+        Commands::DataDump { tio } => data_dump_deprecated(&tio),
+        Commands::DataDumpAll { tio } => data_dump_all_deprecated(&tio),
+        Commands::MetaDump { tio } => meta_dump_deprecated(&tio),
     };
 
     if result.is_ok() {
