@@ -904,6 +904,23 @@ fn log_csv(
             }
         }
     }
+
+    if !header_written {
+        drop(file);
+        std::fs::remove_file(&output_path).ok();
+        eprintln!(
+            "Error: No data found for stream '{}' at route {}",
+            stream_arg, target_route
+        );
+        eprintln!();
+        eprintln!("To see available routes and streams, run:");
+        eprintln!(
+            "  tio-tool log-dump -m {}",
+            files.first().unwrap_or(&"<file>".to_string())
+        );
+        return Err(());
+    }
+
     Ok(())
 }
 
