@@ -109,18 +109,18 @@ impl Reader {
     }
 
     fn advance_cursor(&mut self, window: &AlignedWindow) {
-        let Some(&last_sample_number) = window.sample_numbers.last() else {
-            return;
-        };
-
         for (stream_key, &run_id) in &window.run_ids {
-            self.cursor.positions.insert(
-                stream_key.clone(),
-                CursorPosition {
-                    run_id,
-                    last_sample_number,
-                },
-            );
+            if let Some(sample_nums) = window.sample_numbers.get(stream_key) {
+                if let Some(&last_sample_number) = sample_nums.last() {
+                    self.cursor.positions.insert(
+                        stream_key.clone(),
+                        CursorPosition {
+                            run_id,
+                            last_sample_number,
+                        },
+                    );
+                }
+            }
         }
     }
 }

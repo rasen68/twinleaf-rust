@@ -33,7 +33,7 @@ impl ColumnBatch {
 
 #[derive(Debug, Clone)]
 pub struct AlignedWindow {
-    pub sample_numbers: Vec<SampleNumber>,
+    pub sample_numbers: HashMap<StreamKey, Vec<SampleNumber>>,
     pub timestamps: Vec<f64>,
     pub columns: HashMap<ColumnKey, ColumnBatch>,
     pub stream_metadata: HashMap<StreamKey, Arc<StreamMetadata>>,
@@ -312,14 +312,6 @@ impl Buffer {
         let count = n.min(available);
         let start = available.saturating_sub(count);
 
-        let sample_numbers: Vec<_> = reference
-            .buffer
-            .sample_numbers
-            .iter()
-            .skip(start)
-            .take(count)
-            .copied()
-            .collect();
         let timestamps: Vec<_> = reference
             .buffer
             .timestamps
@@ -329,7 +321,7 @@ impl Buffer {
             .copied()
             .collect();
 
-        self.build_window(&by_stream, start, count, sample_numbers, timestamps)
+        self.build_window(&by_stream, start, count, timestamps)
     }
 
     pub fn read_from_cursor(
@@ -409,13 +401,6 @@ impl Buffer {
         let reference_key = reference_key.unwrap();
         let reference = &self.active_runs.get(&reference_key).unwrap().buffer;
 
-        let sample_numbers: Vec<_> = reference
-            .sample_numbers
-            .iter()
-            .skip(start)
-            .take(n)
-            .copied()
-            .collect();
         let timestamps: Vec<_> = reference
             .timestamps
             .iter()
@@ -424,7 +409,7 @@ impl Buffer {
             .copied()
             .collect();
 
-        self.build_window(&by_stream, start, n, sample_numbers, timestamps)
+        self.build_window(&by_stream, start, n, timestamps)
     }
 
     pub fn read_aligned_tail(&self, columns: &[ColumnKey]) -> Result<AlignedWindow, ReadError> {
@@ -484,13 +469,6 @@ impl Buffer {
             .unwrap_or(reference.len().saturating_sub(1));
         let count = end.saturating_sub(start) + 1;
 
-        let sample_numbers: Vec<_> = reference
-            .sample_numbers
-            .iter()
-            .skip(start)
-            .take(count)
-            .copied()
-            .collect();
         let timestamps: Vec<_> = reference
             .timestamps
             .iter()
@@ -499,7 +477,7 @@ impl Buffer {
             .copied()
             .collect();
 
-        self.build_window(&by_stream, start, count, sample_numbers, timestamps)
+        self.build_window(&by_stream, start, count, timestamps)
     }
 
     fn validate_rates(
@@ -540,9 +518,9 @@ impl Buffer {
         by_stream: &HashMap<StreamKey, Vec<ColumnId>>,
         start: usize,
         count: usize,
-        sample_numbers: Vec<SampleNumber>,
         timestamps: Vec<f64>,
     ) -> Result<AlignedWindow, ReadError> {
+        let mut sample_numbers = HashMap::new();
         let mut columns = HashMap::new();
         let mut stream_metadata = HashMap::new();
         let mut segment_metadata = HashMap::new();
@@ -553,6 +531,16 @@ impl Buffer {
         for (stream_key, col_ids) in by_stream {
             let active = self.active_runs.get(stream_key).unwrap();
             let buf = &active.buffer;
+
+            // Extract sample numbers for this stream
+            let stream_sample_numbers: Vec<_> = buf
+                .sample_numbers
+                .iter()
+                .skip(start)
+                .take(count)
+                .copied()
+                .collect();
+            sample_numbers.insert(stream_key.clone(), stream_sample_numbers);
 
             stream_metadata.insert(stream_key.clone(), buf.stream_metadata.clone());
             segment_metadata.insert(stream_key.clone(), buf.segment_metadata.clone());
