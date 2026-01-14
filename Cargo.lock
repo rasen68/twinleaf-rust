@@ -1487,7 +1487,7 @@ dependencies = [
 
 [[package]]
 name = "twinleaf"
-version = "1.6.0"
+version = "1.6.2"
 dependencies = [
  "crc",
  "crossbeam",
@@ -1503,7 +1503,7 @@ dependencies = [
 
 [[package]]
 name = "twinleaf-tools"
-version = "1.6.1"
+version = "1.6.2"
 dependencies = [
  "chrono",
  "clap",
