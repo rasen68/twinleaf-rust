@@ -8,6 +8,7 @@ use std::{
     io::{self, Read},
     str::FromStr,
     time::{Duration, Instant},
+    iter::Cycle
 };
 
 use clap::Parser;
@@ -19,7 +20,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     symbols,
     text::{Line, Span},
-    widgets::{Axis, Block, Borders, Chart, Dataset, GraphType, Paragraph},
+    widgets::{Axis, Block, Borders, Chart, Dataset, GraphType, List, Paragraph},
     Frame, Terminal,
 };
 use toml_edit::{DocumentMut, InlineTable, Value};
@@ -336,6 +337,8 @@ pub enum Mode {
 pub enum Action {
     Quit,
     SetMode(Mode),
+    AutoCompleteCommand,
+    NewCommandString,
     SubmitCommand,
     NavUp,
     NavDown,
@@ -434,7 +437,9 @@ fn exec_rpc(client: &RpcClient, req: &RpcReq) -> Result<String, String> {
 pub struct App {
     pub all: bool,
     pub parent_route: DeviceRoute,
-
+    pub rpcs: Vec<(u16, String)>,
+    pub suggested_rpcs: Cycle<std::vec::IntoIter<String>>,
+    pub suggested_rpcs_len: usize,
     pub mode: Mode,
     pub view: ViewConfig,
 
@@ -456,10 +461,13 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(all: bool, parent_route: &DeviceRoute) -> Self {
+    pub fn new(all: bool, parent_route: &DeviceRoute, rpcs: &Result<Vec<(u16, String)>, ()>) -> Self {
         Self {
             all,
             parent_route: parent_route.clone(),
+            rpcs: rpcs.clone().expect("Failed to obtain cache list"),
+            suggested_rpcs: Vec::new().into_iter().cycle(),
+            suggested_rpcs_len: 0,
             mode: Mode::Normal,
             view: ViewConfig::default(),
             nav: Nav::default(),
@@ -490,7 +498,9 @@ impl App {
             Action::SetMode(Mode::Normal) => {
                 self.mode = Mode::Normal;
                 self.input_state.blur();
-            }
+            },
+            Action::AutoCompleteCommand => {self.complete_command()},
+            Action::NewCommandString => {self.update_command_list()}
             Action::SubmitCommand => self.submit_command(rpc_tx),
             Action::HistoryNavigate(dir) => self.navigate_history(dir),
             Action::NavUp => {
@@ -561,6 +571,32 @@ impl App {
             }
         }
         false
+    }
+
+    fn complete_command(&mut self) {
+        match self.suggested_rpcs.next().clone(){
+            Some(value) => {
+                self.input_state = TextState::new().with_value(value);
+                self.input_state.focus();
+                self.input_state.move_end()
+            }
+            None => return
+        };
+    }
+
+    fn update_command_list(&mut self){
+        let line = self.input_state.value().to_string();
+        let mut rpc_cache: Vec<String> = Vec::new();
+
+        for (_meta, name) in self.rpcs.clone(){rpc_cache.push(name)}
+        let completions: Vec<String> = rpc_cache
+            .iter()
+            .filter(|word: &&String| word.to_string().starts_with(&line))
+            .map(String::clone)
+            .collect();
+
+        self.suggested_rpcs_len = completions.len();
+        self.suggested_rpcs = completions.into_iter().cycle();
     }
 
     fn submit_command(&mut self, rpc_tx: &Sender<RpcReq>) {
@@ -874,12 +910,15 @@ fn get_action(ev: Event, app: &mut App) -> Option<Action> {
         match app.mode {
             Mode::Command => match k.code {
                 KeyCode::Esc => Some(Action::SetMode(Mode::Normal)),
+                KeyCode::Tab => Some(Action::AutoCompleteCommand),
                 KeyCode::Up => Some(Action::HistoryNavigate(-1)),
                 KeyCode::Down => Some(Action::HistoryNavigate(1)),
-                KeyCode::Enter => Some(Action::SubmitCommand),
+                KeyCode::Enter => {
+                    Some(Action::SubmitCommand)
+                }
                 _ => {
                     app.input_state.handle_key_event(k);
-                    None
+                    Some(Action::NewCommandString)
                 }
             },
             Mode::Normal => match k.code {
@@ -926,7 +965,7 @@ fn draw_ui<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
         let size = f.area();
         let (main_area, footer_area) = {
             let footer_h = if app.mode == Mode::Command {
-                4
+                10
             } else if app.view.show_footer {
                 6
             } else {
@@ -1170,14 +1209,22 @@ fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
     if app.mode == Mode::Command {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(1)])
+            .constraints([Constraint::Length(7), Constraint::Length(1), Constraint::Min(1)])
             .split(area);
+
+        let rpcs: Vec<String> = app.suggested_rpcs.clone().take(app.suggested_rpcs_len).collect();
+        let rpc_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" RPCList ");
+        f.render_widget(
+            List::new(rpcs).block(rpc_block), chunks[0],
+        );
 
         if let Some((msg, color)) = &app.last_rpc_result {
             f.render_widget(
                 Paragraph::new(msg.as_str())
                     .style(Style::default().fg(*color).add_modifier(Modifier::BOLD)),
-                chunks[0],
+                chunks[1],
             );
         }
 
@@ -1210,7 +1257,7 @@ fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
         let block = Block::default()
             .borders(Borders::TOP)
             .title(" Command Mode ");
-        f.render_widget(Paragraph::new(Line::from(spans)).block(block), chunks[1]);
+        f.render_widget(Paragraph::new(Line::from(spans)).block(block), chunks[2]);
         return;
     }
 
@@ -1616,6 +1663,12 @@ fn main() {
     let (rpc_resp_tx, rpc_resp_rx) = channel::bounded::<RpcResp>(1);
     let rpc_client =
         RpcClient::open(&proxy, parent_route.clone()).expect("Failed to open RPC client");
+
+    // Get RPC list from cache or device
+    let rpcs = rpc_client.rpc_list(&parent_route).map_err(|e| {
+        eprintln!("RPC list failed: {:?}", e);
+    });
+
     std::thread::spawn(move || {
         while let Ok(req) = rpc_rx.recv() {
             let result = exec_rpc(&rpc_client, &req);
@@ -1636,7 +1689,7 @@ fn main() {
     });
 
     // App state
-    let mut app = App::new(cli.all, &parent_route);
+    let mut app = App::new(cli.all, &parent_route, &rpcs);
     if let Some(path) = &cli.colors {
         if let Ok(theme) = load_theme(path) {
             app.view.theme = theme;
