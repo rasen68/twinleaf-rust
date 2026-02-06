@@ -3,7 +3,7 @@ use tio::proto::DeviceRoute;
 use tio::proxy;
 use tio::util;
 use twinleaf::data::DeviceDataParser;
-use twinleaf::device::{Device, DeviceTree};
+use twinleaf::device::{Device, DeviceTree, RpcClient};
 use twinleaf::tio;
 use twinleaf_tools::TioOpts;
 
@@ -290,18 +290,13 @@ fn default_log_path() -> String {
 fn list_rpcs(tio: &TioOpts) -> Result<(), ()> {
     let proxy = proxy::Interface::new(&tio.root);
     let route = tio.parse_route();
-    let device = proxy.device_rpc(route).unwrap();
-
-    let nrpcs: u16 = device.get("rpc.listinfo").map_err(|e| {
-        eprintln!("Failed to get RPC count: {:?}", e);
+    let rpc_client = RpcClient::open(&proxy, route.clone()).expect("Failed to open RPC client");
+    let rpcs = rpc_client.rpc_list(&route).map_err(|e| {
+        eprintln!("RPC list failed: {:?}", e);
     })?;
 
-    for id in 0..nrpcs {
-        let (meta, name): (u16, String) = device.rpc("rpc.listinfo", id).map_err(|e| {
-            eprintln!("Failed to get RPC {}: {:?}", id, e);
-        })?;
-
-        let spec = twinleaf::device::util::parse_rpc_spec(meta, name);
+    for (meta, name) in &rpcs {
+        let spec = twinleaf::device::util::parse_rpc_spec(*meta, name.to_string());
         println!(
             "{} {}({})",
             spec.perm_str(),
