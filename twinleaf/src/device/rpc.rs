@@ -2,6 +2,11 @@ use crate::device::util;
 use crate::tio::{proto::DeviceRoute, proxy, util as tio_util};
 use std::collections::{BTreeMap, HashMap};
 
+// File I/O for cacheing
+use std::io::{self, BufRead, Write};
+use std::fs;
+use dirs_next::cache_dir;
+
 #[derive(Debug, Clone)]
 pub enum RpcValue {
     Unit,
@@ -261,6 +266,33 @@ pub struct RpcClient {
     root_route: DeviceRoute,
 }
 
+impl From<io::Error> for RpcListError {
+    fn from(e: io::Error) -> Self {
+        RpcListError::CacheFileError(e)
+    }
+}
+
+#[derive(Debug)]
+pub enum RpcListError {
+    CacheDirError,
+    CacheCreateError,
+
+    DevNameRpcError,
+    RpcHashError,
+
+    NumRpcsError,
+    RpcListError,
+    CacheWriteError,
+    RemoveBadCacheError,
+
+    CacheReadError,
+    InvalidCacheError,
+
+    CacheFileError(io::Error),
+}
+
+type RpcList = Vec<(u16, String)>;
+
 impl RpcClient {
     pub fn new(port: proxy::Port, root_route: DeviceRoute) -> Self {
         Self { port, root_route }
@@ -319,11 +351,82 @@ impl RpcClient {
         self.rpc(route, name, ())
     }
 
-    pub fn get<T: tio_util::TioRpcReplyable<T>>(
-        &self,
-        route: &DeviceRoute,
+    pub fn get<T: tio_util::TioRpcReplyable<T>>( &self, route: &DeviceRoute,
         name: &str,
     ) -> Result<T, proxy::RpcError> {
         self.rpc(route, name, ())
+    }
+
+    fn read_rpc_cache(&self, file: fs::File) -> Result<RpcList, RpcListError> {
+        let mut list: Vec<(u16, String)> = Vec::new();
+        let reader = io::BufReader::new(file);
+
+        for line in reader.lines() {
+            let line = line.map_err(|_| RpcListError::CacheReadError)?;
+            let (meta, name) = line.split_once(' ').ok_or(RpcListError::InvalidCacheError)?;
+            let meta_hex = u16::from_str_radix(meta, 16).map_err(|_|
+                RpcListError::InvalidCacheError)?;
+            let name_string = name.trim().to_string();
+            list.push((meta_hex, name_string));
+        }
+
+        return Ok(list);
+    }
+
+    fn write_rpc_cache(&self, route: &DeviceRoute, file: fs::File) -> Result<RpcList, RpcListError> {
+        let mut list: Vec<(u16, String)> = Vec::new();
+        let mut writer = io::BufWriter::new(file);
+
+        let nrpcs: u16 = self.get(route, "rpc.listinfo").map_err(|_| RpcListError::NumRpcsError)?;
+
+        for id in 0..nrpcs {
+            let (meta, name): (u16, String) = self.rpc(route, "rpc.listinfo", id).map_err(|_|
+                RpcListError::RpcListError)?;
+            writeln!(writer, "{:04x} {}", meta, name).map_err(|_|
+                RpcListError::CacheWriteError)?;
+            list.push((meta, name));
+        }
+
+        return Ok(list);
+    }
+
+    pub fn rpc_list(&self, route: &DeviceRoute) -> Result<RpcList, RpcListError> {
+        // Get/create cache directory
+        let cache_parent_dir = cache_dir().ok_or(RpcListError::CacheDirError)?;
+        let tl_cache_dir = cache_parent_dir.join("twinleaf");
+        fs::create_dir_all(&tl_cache_dir).map_err(|_| RpcListError::CacheDirError)?;
+
+        // Get what cache name
+        let dev_name: String = self.get(route, "dev.name").map_err(|_| RpcListError::DevNameRpcError)?;
+        let rpc_hash: u32 = self.get(route, "rpc.hash").map_err(|_| RpcListError::RpcHashError)?;
+        let base_name = format!("{}.{:x}.rpcs", dev_name, rpc_hash);
+        let file_path = tl_cache_dir.join(&base_name);
+
+        let cache_file = fs::File::open(&file_path);
+
+        // TODO: write more identifying info to cache file?
+        // Date created, firmware version, etc.
+        // Maybe on an ignored line at the top
+
+        match cache_file {
+            Ok(file) => self.read_rpc_cache(file),
+
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                let cache_file = fs::File::create(&file_path).map_err(|_|
+                    RpcListError::CacheCreateError)?;
+
+                // Try to write, and if we fail, remove the file we created
+                let list = self.write_rpc_cache(route, cache_file).map_err(|orig_error| {
+                    match fs::remove_file(file_path) {
+                        Ok(_) => orig_error,
+                        Err(_) => RpcListError::RemoveBadCacheError,
+                    }
+                })?;
+                Ok(list)
+            },
+
+            // TODO: what other io errors to handle?
+            Err(other_err) => Err(RpcListError::CacheFileError(other_err)),
+        }
     }
 }
