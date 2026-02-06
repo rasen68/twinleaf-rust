@@ -452,6 +452,7 @@ pub struct App {
     pub device_metadata: HashMap<DeviceRoute, DeviceFullMetadata>,
     pub window_aligned: Option<AlignedWindow>,
 
+    pub incomplete_input: TextState<'static>,
     pub input_state: TextState<'static>,
     pub cmd_history: Vec<String>,
     pub history_ptr: Option<usize>,
@@ -477,6 +478,7 @@ impl App {
             last: BTreeMap::new(),
             device_metadata: HashMap::new(),
             window_aligned: None,
+            incomplete_input: TextState::default(),
             input_state: TextState::default(),
             cmd_history: Vec::new(),
             history_ptr: None,
@@ -585,6 +587,7 @@ impl App {
     }
 
     fn update_command_list(&mut self){
+        self.incomplete_input = self.input_state.clone();
         let line = self.input_state.value().to_string();
         let mut rpc_cache: Vec<String> = Vec::new();
 
@@ -714,6 +717,11 @@ impl App {
         } else {
             self.nav.idx = self.nav.idx.min(self.nav_items.len() - 1);
         }
+    }
+
+    pub fn rpc_list_len(&self) -> u16 {
+        let length: u16 = self.suggested_rpcs_len.try_into().unwrap();
+        if length > 10 { 10 } else { length }
     }
 
     pub fn current_pos(&self) -> Option<&NavPos> {
@@ -965,7 +973,7 @@ fn draw_ui<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
         let size = f.area();
         let (main_area, footer_area) = {
             let footer_h = if app.mode == Mode::Command {
-                10
+                5 + app.rpc_list_len()
             } else if app.view.show_footer {
                 6
             } else {
@@ -1209,7 +1217,7 @@ fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
     if app.mode == Mode::Command {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(7), Constraint::Length(1), Constraint::Min(1)])
+            .constraints([Constraint::Length(app.rpc_list_len() + 2), Constraint::Length(1), Constraint::Min(1)])
             .split(area);
 
         let rpcs: Vec<String> = app.suggested_rpcs.clone().take(app.suggested_rpcs_len).collect();
