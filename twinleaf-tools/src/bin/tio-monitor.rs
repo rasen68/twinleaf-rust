@@ -3,12 +3,11 @@
 // Build: cargo run --release -- <tio-url> [options]
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fs::File,
     io::{self, Read},
     str::FromStr,
     time::{Duration, Instant},
-    iter::Cycle
 };
 
 use clap::Parser;
@@ -16,7 +15,7 @@ use crossbeam::channel::{self, Sender};
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
-    prelude::Backend,
+    prelude::{Backend, Stylize},
     style::{Color, Modifier, Style},
     symbols,
     text::{Line, Span},
@@ -338,8 +337,10 @@ pub enum Action {
     Quit,
     SetMode(Mode),
     AutoCompleteCommand,
+    AutoCompleteScrollback,
     NewCommandString,
     SubmitCommand,
+    AcceptCompletion,
     NavUp,
     NavDown,
     NavLeft,
@@ -438,8 +439,9 @@ pub struct App {
     pub all: bool,
     pub parent_route: DeviceRoute,
     pub rpcs: Vec<(u16, String)>,
-    pub suggested_rpcs: Cycle<std::vec::IntoIter<String>>,
+    pub suggested_rpcs: VecDeque<String>,
     pub suggested_rpcs_len: usize,
+    pub suggested_rpcs_ind: usize,
     pub mode: Mode,
     pub view: ViewConfig,
 
@@ -452,14 +454,18 @@ pub struct App {
     pub device_metadata: HashMap<DeviceRoute, DeviceFullMetadata>,
     pub window_aligned: Option<AlignedWindow>,
 
-    pub incomplete_input: TextState<'static>,
     pub input_state: TextState<'static>,
+    pub current_completion: String,
     pub cmd_history: Vec<String>,
     pub history_ptr: Option<usize>,
     pub last_rpc_result: Option<(String, Color)>,
+    pub last_rpc_command: String,
     pub blink_state: bool,
     pub last_blink: Instant,
 }
+
+const RPCLIST_MAX_LEN: usize = 12;
+const RPCLIST_MIDDLE: usize = 6;
 
 impl App {
     pub fn new(all: bool, parent_route: &DeviceRoute, rpcs: &Result<Vec<(u16, String)>, ()>) -> Self {
@@ -467,8 +473,9 @@ impl App {
             all,
             parent_route: parent_route.clone(),
             rpcs: rpcs.clone().expect("Failed to obtain cache list"),
-            suggested_rpcs: Vec::new().into_iter().cycle(),
-            suggested_rpcs_len: 0,
+            suggested_rpcs: VecDeque::from(vec![String::new()]),
+            suggested_rpcs_len: 1,
+            suggested_rpcs_ind: 0,
             mode: Mode::Normal,
             view: ViewConfig::default(),
             nav: Nav::default(),
@@ -478,11 +485,12 @@ impl App {
             last: BTreeMap::new(),
             device_metadata: HashMap::new(),
             window_aligned: None,
-            incomplete_input: TextState::default(),
             input_state: TextState::default(),
+            current_completion: String::new(),
             cmd_history: Vec::new(),
             history_ptr: None,
             last_rpc_result: None,
+            last_rpc_command: String::new(),
             blink_state: true,
             last_blink: Instant::now(),
         }
@@ -495,15 +503,19 @@ impl App {
                 self.mode = Mode::Command;
                 self.input_state = TextState::default();
                 self.input_state.focus();
+                self.current_completion = String::new();
                 self.history_ptr = None;
+                self.suggested_rpcs = VecDeque::from(vec![String::new()]);
             }
             Action::SetMode(Mode::Normal) => {
                 self.mode = Mode::Normal;
                 self.input_state.blur();
             },
             Action::AutoCompleteCommand => {self.complete_command()},
+            Action::AutoCompleteScrollback => {self.scroll_back_command()},
             Action::NewCommandString => {self.update_command_list()}
             Action::SubmitCommand => self.submit_command(rpc_tx),
+            Action::AcceptCompletion => self.accept_completion(),
             Action::HistoryNavigate(dir) => self.navigate_history(dir),
             Action::NavUp => {
                 self.view.follow_selection = true;
@@ -576,37 +588,76 @@ impl App {
     }
 
     fn complete_command(&mut self) {
-        match self.suggested_rpcs.next().clone(){
-            Some(value) => {
-                self.input_state = TextState::new().with_value(value);
-                self.input_state.focus();
-                self.input_state.move_end()
-            }
-            None => return
+        self.suggested_rpcs_ind = match (self.suggested_rpcs_ind, self.suggested_rpcs_len) {
+            (i, l) if i == l-1 => 0,
+            (i, 0..RPCLIST_MAX_LEN) => i+1,
+            (i @ 0..RPCLIST_MIDDLE, _) => i+1,
+            (i, _) => { // middle of wrapped list, move list instead of index
+                let front = self.suggested_rpcs.pop_front().unwrap();
+                self.suggested_rpcs.push_back(front);
+                i
+            },
         };
+
+        let rpc = self.suggested_rpcs[self.suggested_rpcs_ind].clone();
+        self.current_completion = rpc[self.input_state.value().len()..].to_string();
+        self.input_state.focus();
+        self.input_state.move_end();
     }
 
-    fn update_command_list(&mut self){
-        self.incomplete_input = self.input_state.clone();
-        let line = self.input_state.value().to_string();
-        let mut rpc_cache: Vec<String> = Vec::new();
+    fn scroll_back_command(&mut self) {
+        self.suggested_rpcs_ind = match (self.suggested_rpcs_ind, self.suggested_rpcs_len) {
+            (0, l @ 0..RPCLIST_MAX_LEN) => l-1,
+            (0, _) => { // 0, move list instead of index
+                let back = self.suggested_rpcs.pop_back().unwrap();
+                self.suggested_rpcs.push_front(back);
+                0
+            },
+            (i, _) => i-1,
+        };
 
-        for (_meta, name) in self.rpcs.clone(){rpc_cache.push(name)}
-        let completions: Vec<String> = rpc_cache
+        let rpc = self.suggested_rpcs[self.suggested_rpcs_ind].clone();
+        self.current_completion = rpc[self.input_state.value().len()..].to_string();
+        self.input_state.focus();
+        self.input_state.move_end();
+    }
+
+    fn update_command_list(&mut self) {
+        self.suggested_rpcs_ind = 0;
+        self.current_completion = String::new();
+        let line = self.input_state.value().to_string();
+        let mut rpc_cache = vec![line.clone()];
+        if !line.is_empty() {
+            for (_, name) in self.rpcs.clone() {
+                rpc_cache.push(name);
+            }
+        }
+
+        self.suggested_rpcs = rpc_cache
             .iter()
             .filter(|word: &&String| word.to_string().starts_with(&line))
             .map(String::clone)
             .collect();
+        self.suggested_rpcs_len = self.suggested_rpcs.len();
+        self.complete_command();
+    }
 
-        self.suggested_rpcs_len = completions.len();
-        self.suggested_rpcs = completions.into_iter().cycle();
+    fn accept_completion(&mut self) {
+        let complete_command = format!("{}{}", self.input_state.value().to_string(), self.current_completion);
+        self.input_state = TextState::new().with_value(complete_command);
+        self.input_state.focus();
+        self.input_state.move_end();
+        self.current_completion = String::new();
     }
 
     fn submit_command(&mut self, rpc_tx: &Sender<RpcReq>) {
-        let line = self.input_state.value().to_string();
-        if line.trim().is_empty() {
-            return;
+        // Completion mode: accept completion, don't submit
+        if !self.current_completion.is_empty() {
+            return self.accept_completion();
         }
+        // No completion: enter command
+        let line = self.input_state.value().to_string();
+        if line.trim().is_empty() { return; }
         if self.cmd_history.last() != Some(&line) {
             self.cmd_history.push(line.clone());
         }
@@ -614,6 +665,7 @@ impl App {
 
         let mut parts = line.split_whitespace();
         if let Some(method) = parts.next() {
+            self.last_rpc_command = method.to_string();
             let remainder: Vec<&str> = parts.collect();
             let arg = if remainder.is_empty() {
                 None
@@ -629,6 +681,7 @@ impl App {
             self.last_rpc_result = Some((format!("Sent to {}...", route), Color::Yellow));
             self.input_state = TextState::default();
             self.input_state.focus();
+            self.update_command_list();
         }
     }
 
@@ -649,6 +702,7 @@ impl App {
             _ => self.history_ptr,
         };
         self.history_ptr = new_ptr;
+        self.current_completion = String::new();
         if let Some(i) = new_ptr {
             self.input_state = TextState::new().with_value(self.cmd_history[i].clone());
             self.input_state.focus();
@@ -720,8 +774,8 @@ impl App {
     }
 
     pub fn rpc_list_len(&self) -> u16 {
-        let length: u16 = self.suggested_rpcs_len.try_into().unwrap();
-        if length > 10 { 10 } else { length }
+        let length: usize = self.suggested_rpcs_len;
+        std::cmp::min(length, RPCLIST_MAX_LEN).try_into().unwrap()
     }
 
     pub fn current_pos(&self) -> Option<&NavPos> {
@@ -919,11 +973,10 @@ fn get_action(ev: Event, app: &mut App) -> Option<Action> {
             Mode::Command => match k.code {
                 KeyCode::Esc => Some(Action::SetMode(Mode::Normal)),
                 KeyCode::Tab => Some(Action::AutoCompleteCommand),
+                KeyCode::BackTab => Some(Action::AutoCompleteScrollback),
                 KeyCode::Up => Some(Action::HistoryNavigate(-1)),
                 KeyCode::Down => Some(Action::HistoryNavigate(1)),
-                KeyCode::Enter => {
-                    Some(Action::SubmitCommand)
-                }
+                KeyCode::Enter => Some(Action::SubmitCommand),
                 _ => {
                     app.input_state.handle_key_event(k);
                     Some(Action::NewCommandString)
@@ -972,7 +1025,7 @@ fn draw_ui<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
     terminal.draw(|f| {
         let size = f.area();
         let (main_area, footer_area) = {
-            let footer_h = if app.mode == Mode::Command {
+            let footer_h: u16 = if app.mode == Mode::Command {
                 5 + app.rpc_list_len()
             } else if app.view.show_footer {
                 6
@@ -1220,10 +1273,19 @@ fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
             .constraints([Constraint::Length(app.rpc_list_len() + 2), Constraint::Length(1), Constraint::Min(1)])
             .split(area);
 
-        let rpcs: Vec<String> = app.suggested_rpcs.clone().take(app.suggested_rpcs_len).collect();
+        // Ensure non-empty box on startup
+        if app.suggested_rpcs.is_empty() { app.suggested_rpcs.push_back(String::new()); }
+        let rpcs: Vec<Span> = app.suggested_rpcs.iter()
+            .map(|v| Span::raw(v.clone()))
+            .map(|v| if v == Span::raw(app.input_state.value()) {v.underlined().bold()} else {v})
+            .enumerate()
+            .map(|(i, v)| if i == app.suggested_rpcs_ind {v.bold()} else {v})
+            .collect();
+
         let rpc_block = Block::default()
             .borders(Borders::ALL)
-            .title(" RPCList ");
+            .title(Line::from(" RPCs ").left_aligned())
+            .title(Line::from(" ↑ Shift+Tab | Tab ↓ ").right_aligned());
         f.render_widget(
             List::new(rpcs).block(rpc_block), chunks[0],
         );
@@ -1237,34 +1299,43 @@ fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
         }
 
         let target_route = app.current_route();
-        let val = app.input_state.value();
-        let cursor_idx = app.input_state.position().min(val.len());
+        let user_input = app.input_state.value();
+        let cursor_idx = app.input_state.position().min(user_input.len());
 
         let mut spans = vec![
             Span::styled(
                 format!("[{}] ", target_route),
                 Style::default().fg(Color::Blue),
             ),
-            Span::raw(&val[0..cursor_idx]),
+            Span::raw(&user_input[0..cursor_idx]),
         ];
 
-        if cursor_idx < val.len() {
+        if cursor_idx < user_input.len() {
             spans.push(Span::styled(
-                &val[cursor_idx..cursor_idx + 1],
+                &user_input[cursor_idx..cursor_idx + 1],
                 if app.blink_state {
                     Style::default().bg(Color::White).fg(Color::Black)
                 } else {
                     Style::default()
                 },
             ));
-            spans.push(Span::raw(&val[cursor_idx + 1..]));
+            spans.push(Span::raw(&user_input[cursor_idx + 1..]));
         } else if app.blink_state {
             spans.push(Span::styled(" ", Style::default().bg(Color::White)));
+            if !app.current_completion.is_empty() {
+                spans.push(Span::styled(&app.current_completion[1..],
+                        Style::default().fg(Color::Gray)));
+            }
+        } else {
+            spans.push(Span::styled(&app.current_completion,
+                    Style::default().fg(Color::Gray)));
         }
 
         let block = Block::default()
             .borders(Borders::TOP)
-            .title(" Command Mode ");
+            .title(Line::from(" Command Mode ").left_aligned())
+            .title(Line::from(" <Esc> ").right_aligned());
+
         f.render_widget(Paragraph::new(Line::from(spans)).block(block), chunks[2]);
         return;
     }
@@ -1740,7 +1811,7 @@ fn main() {
             recv(rpc_resp_rx) -> res => {
                 if let Ok(res) = res {
                     let (msg, col) = match res.result {
-                        Ok(s) => (format!("OK: {}", s), Color::Green),
+                        Ok(s) => (format!("{}: {}", app.last_rpc_command, s), Color::Green),
                         Err(s) => (format!("ERR: {}", s), Color::Red),
                     };
                     app.last_rpc_result = Some((msg, col));
