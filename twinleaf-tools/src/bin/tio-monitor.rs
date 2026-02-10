@@ -992,6 +992,9 @@ fn get_action(ev: Event, app: &mut App) -> Option<Action> {
                 KeyCode::BackTab => Some(Action::AutoCompleteBack),
                 KeyCode::Up => Some(Action::HistoryNavigate(-1)),
                 KeyCode::Down => Some(Action::HistoryNavigate(1)),
+                KeyCode::Right if !app.current_completion.is_empty() => {
+                    Some(Action::AcceptCompletion)
+                },
                 KeyCode::Enter => Some(Action::SubmitCommand),
                 _ => {
                     app.input_state.handle_key_event(k);
@@ -1002,13 +1005,7 @@ fn get_action(ev: Event, app: &mut App) -> Option<Action> {
                 KeyCode::Char(':') => Some(Action::SetMode(Mode::Command)),
                 KeyCode::Char('q') => Some(Action::Quit),
                 KeyCode::Char('c') if k.modifiers == KeyModifiers::CONTROL => Some(Action::Quit),
-                KeyCode::Esc => {
-                    if app.view.show_plot {
-                        Some(Action::ClosePlot)
-                    } else {
-                        Some(Action::Quit)
-                    }
-                }
+                KeyCode::Esc => Some(Action::ClosePlot),
                 KeyCode::Up => Some(Action::NavUp),
                 KeyCode::Down => Some(Action::NavDown),
                 KeyCode::Left => Some(Action::NavLeft),
