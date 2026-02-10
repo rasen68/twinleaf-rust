@@ -336,8 +336,8 @@ pub enum Mode {
 pub enum Action {
     Quit,
     SetMode(Mode),
-    AutoCompleteCommand,
-    AutoCompleteScrollback,
+    AutoCompleteTab,
+    AutoCompleteBack,
     NewCommandString,
     SubmitCommand,
     AcceptCompletion,
@@ -438,10 +438,6 @@ fn exec_rpc(client: &RpcClient, req: &RpcReq) -> Result<String, String> {
 pub struct App {
     pub all: bool,
     pub parent_route: DeviceRoute,
-    pub rpcs: Vec<(u16, String)>,
-    pub suggested_rpcs: VecDeque<String>,
-    pub suggested_rpcs_len: usize,
-    pub suggested_rpcs_ind: usize,
     pub mode: Mode,
     pub view: ViewConfig,
 
@@ -454,6 +450,12 @@ pub struct App {
     pub device_metadata: HashMap<DeviceRoute, DeviceFullMetadata>,
     pub window_aligned: Option<AlignedWindow>,
 
+    pub footer_height: u16,
+    pub rpcs: Vec<(u16, String)>,
+    pub suggested_rpcs: VecDeque<String>,
+    pub suggested_rpcs_len: usize,
+    pub suggested_rpcs_ind: usize,
+
     pub input_state: TextState<'static>,
     pub current_completion: String,
     pub cmd_history: Vec<String>,
@@ -465,17 +467,12 @@ pub struct App {
 }
 
 const RPCLIST_MAX_LEN: usize = 12;
-const RPCLIST_MIDDLE: usize = 6;
 
 impl App {
     pub fn new(all: bool, parent_route: &DeviceRoute, rpcs: &Result<Vec<(u16, String)>, ()>) -> Self {
         Self {
             all,
             parent_route: parent_route.clone(),
-            rpcs: rpcs.clone().expect("Failed to obtain cache list"),
-            suggested_rpcs: VecDeque::from(vec![String::new()]),
-            suggested_rpcs_len: 1,
-            suggested_rpcs_ind: 0,
             mode: Mode::Normal,
             view: ViewConfig::default(),
             nav: Nav::default(),
@@ -485,6 +482,11 @@ impl App {
             last: BTreeMap::new(),
             device_metadata: HashMap::new(),
             window_aligned: None,
+            footer_height: 0,
+            rpcs: rpcs.clone().expect("Failed to obtain cache list"),
+            suggested_rpcs: VecDeque::from(vec![String::new()]),
+            suggested_rpcs_len: 1,
+            suggested_rpcs_ind: 0,
             input_state: TextState::default(),
             current_completion: String::new(),
             cmd_history: Vec::new(),
@@ -511,8 +513,8 @@ impl App {
                 self.mode = Mode::Normal;
                 self.input_state.blur();
             },
-            Action::AutoCompleteCommand => {self.complete_command()},
-            Action::AutoCompleteScrollback => {self.scroll_back_command()},
+            Action::AutoCompleteTab=> {self.tab_complete()},
+            Action::AutoCompleteBack => {self.tab_back_complete()},
             Action::NewCommandString => {self.update_command_list()}
             Action::SubmitCommand => self.submit_command(rpc_tx),
             Action::AcceptCompletion => self.accept_completion(),
@@ -588,26 +590,34 @@ impl App {
     }
 
     fn complete_command(&mut self) {
+        let rpc = self.suggested_rpcs[self.suggested_rpcs_ind].clone();
+        self.current_completion = match rpc.get(self.input_state.value().len()..) {
+            Some(s) => s.to_string(),
+            None => String::new(),
+        };
+        self.input_state.focus();
+        self.input_state.move_end();
+    }
+
+    fn tab_complete(&mut self) {
+        let max = std::cmp::min(RPCLIST_MAX_LEN, (self.footer_height - 5).into());
         self.suggested_rpcs_ind = match (self.suggested_rpcs_ind, self.suggested_rpcs_len) {
             (i, l) if i == l-1 => 0,
-            (i, 0..RPCLIST_MAX_LEN) => i+1,
-            (i @ 0..RPCLIST_MIDDLE, _) => i+1,
+            (i, l) if l <= max => i+1,
+            (i, _) if i < max / 2 => i+1,
             (i, _) => { // middle of wrapped list, move list instead of index
                 let front = self.suggested_rpcs.pop_front().unwrap();
                 self.suggested_rpcs.push_back(front);
                 i
             },
         };
-
-        let rpc = self.suggested_rpcs[self.suggested_rpcs_ind].clone();
-        self.current_completion = rpc[self.input_state.value().len()..].to_string();
-        self.input_state.focus();
-        self.input_state.move_end();
+        self.complete_command();
     }
 
-    fn scroll_back_command(&mut self) {
+    fn tab_back_complete(&mut self) {
+        let max = std::cmp::min(RPCLIST_MAX_LEN, (self.footer_height - 5).into());
         self.suggested_rpcs_ind = match (self.suggested_rpcs_ind, self.suggested_rpcs_len) {
-            (0, l @ 0..RPCLIST_MAX_LEN) => l-1,
+            (0, l) if l <= max => l-1,
             (0, _) => { // 0, move list instead of index
                 let back = self.suggested_rpcs.pop_back().unwrap();
                 self.suggested_rpcs.push_front(back);
@@ -615,18 +625,14 @@ impl App {
             },
             (i, _) => i-1,
         };
-
-        let rpc = self.suggested_rpcs[self.suggested_rpcs_ind].clone();
-        self.current_completion = rpc[self.input_state.value().len()..].to_string();
-        self.input_state.focus();
-        self.input_state.move_end();
+        self.complete_command();
     }
 
     fn update_command_list(&mut self) {
         self.suggested_rpcs_ind = 0;
         self.current_completion = String::new();
         let line = self.input_state.value().to_string();
-        let mut rpc_cache = vec![line.clone()];
+        let mut rpc_cache = Vec::new();
         if !line.is_empty() {
             for (_, name) in self.rpcs.clone() {
                 rpc_cache.push(name);
@@ -639,6 +645,10 @@ impl App {
             .map(String::clone)
             .collect();
         self.suggested_rpcs_len = self.suggested_rpcs.len();
+        if !(1..=RPCLIST_MAX_LEN).contains(&self.suggested_rpcs_len) {
+            self.suggested_rpcs.push_back(String::new());
+            self.suggested_rpcs_len += 1;
+        }
         self.complete_command();
     }
 
@@ -647,7 +657,7 @@ impl App {
         self.input_state = TextState::new().with_value(complete_command);
         self.input_state.focus();
         self.input_state.move_end();
-        self.current_completion = String::new();
+        self.update_command_list();
     }
 
     fn submit_command(&mut self, rpc_tx: &Sender<RpcReq>) {
@@ -972,8 +982,8 @@ fn get_action(ev: Event, app: &mut App) -> Option<Action> {
         match app.mode {
             Mode::Command => match k.code {
                 KeyCode::Esc => Some(Action::SetMode(Mode::Normal)),
-                KeyCode::Tab => Some(Action::AutoCompleteCommand),
-                KeyCode::BackTab => Some(Action::AutoCompleteScrollback),
+                KeyCode::Tab => Some(Action::AutoCompleteTab),
+                KeyCode::BackTab => Some(Action::AutoCompleteBack),
                 KeyCode::Up => Some(Action::HistoryNavigate(-1)),
                 KeyCode::Down => Some(Action::HistoryNavigate(1)),
                 KeyCode::Enter => Some(Action::SubmitCommand),
@@ -1024,22 +1034,34 @@ fn get_action(ev: Event, app: &mut App) -> Option<Action> {
 fn draw_ui<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
     terminal.draw(|f| {
         let size = f.area();
+        let height = size.height;
+
         let (main_area, footer_area) = {
-            let footer_h: u16 = if app.mode == Mode::Command {
-                5 + app.rpc_list_len()
+            let (main_constraint, footer_constraint) = if app.mode == Mode::Command {
+                if height >= 18 {
+                    (Constraint::Min(10), Constraint::Length(5 + app.rpc_list_len()))
+                } else if height >= 12 {
+                    (Constraint::Min(2), Constraint::Length(8))
+                } else if height >= 5 {
+                    (Constraint::Min(2), Constraint::Length(3))
+                } else {
+                    (Constraint::Min(0), Constraint::Length(2))
+                }
             } else if app.view.show_footer {
-                6
+                (Constraint::Min(10), Constraint::Length(6))
             } else {
-                2
+                (Constraint::Min(10), Constraint::Length(2))
             };
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Min(10), Constraint::Length(footer_h)])
+                .constraints([main_constraint, footer_constraint])
                 .split(size);
             (chunks[0], Some(chunks[1]))
         };
 
-        let (left, right) = if app.view.show_plot {
+        let (left, right) = if app.mode == Mode::Command && height < 3 {
+            (None, None)
+        } else if app.view.show_plot {
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
@@ -1047,18 +1069,14 @@ fn draw_ui<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                     Constraint::Percentage(app.view.plot_width_percent),
                 ])
                 .split(main_area);
-            (chunks[0], Some(chunks[1]))
+            (Some(chunks[0]), Some(chunks[1]))
         } else {
-            (main_area, None)
+            (Some(main_area), None)
         };
 
-        render_monitor_panel(f, app, left, Instant::now());
-        if let Some(r) = right {
-            render_graphics_panel(f, app, r);
-        }
-        if let Some(foot) = footer_area {
-            render_footer(f, app, foot);
-        }
+        if let Some(l) = left { render_monitor_panel(f, app, l, Instant::now()); }
+        if let Some(r) = right { render_graphics_panel(f, app, r); }
+        if let Some(foot) = footer_area { render_footer(f, app, foot); }
     })?;
     Ok(())
 }
@@ -1267,35 +1285,41 @@ fn build_left_lines(app: &mut App, now: Instant) -> (Vec<Line<'static>>, HashMap
 }
 
 fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
+    app.footer_height = area.height; // how many lines the footer has to work with
     if app.mode == Mode::Command {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(app.rpc_list_len() + 2), Constraint::Length(1), Constraint::Min(1)])
+            .constraints([
+                Constraint::Max(app.rpc_list_len() + 2),
+                Constraint::Length(std::cmp::min(1, app.footer_height - 1)),
+                Constraint::Length(if app.footer_height > 2 {2} else {1}),
+            ])
             .split(area);
 
-        // Ensure non-empty box on startup
-        if app.suggested_rpcs.is_empty() { app.suggested_rpcs.push_back(String::new()); }
-        let rpcs: Vec<Span> = app.suggested_rpcs.iter()
-            .map(|v| Span::raw(v.clone()))
-            .map(|v| if v == Span::raw(app.input_state.value()) {v.underlined().bold()} else {v})
-            .enumerate()
-            .map(|(i, v)| if i == app.suggested_rpcs_ind {v.bold()} else {v})
-            .collect();
+        if app.footer_height > 3 {
+            let rpcs: Vec<Span> = app.suggested_rpcs.iter()
+                .map(|v| Span::raw(v.clone()))
+                .enumerate()
+                .map(|(i, v)| if i == app.suggested_rpcs_ind {v.bold()} else {v})
+                .collect();
 
-        let rpc_block = Block::default()
-            .borders(Borders::ALL)
-            .title(Line::from(" RPCs ").left_aligned())
-            .title(Line::from(" ↑ Shift+Tab | Tab ↓ ").right_aligned());
-        f.render_widget(
-            List::new(rpcs).block(rpc_block), chunks[0],
-        );
-
-        if let Some((msg, color)) = &app.last_rpc_result {
+            let rpc_block = Block::default()
+                .borders(Borders::ALL)
+                .title(Line::from(" RPCs ").left_aligned())
+                .title(Line::from(" ↑ Shift+Tab | Tab ↓ ").right_aligned());
             f.render_widget(
-                Paragraph::new(msg.as_str())
-                    .style(Style::default().fg(*color).add_modifier(Modifier::BOLD)),
-                chunks[1],
+                List::new(rpcs).block(rpc_block), chunks[0],
             );
+        }
+
+        if app.footer_height > 1 {
+            if let Some((msg, color)) = &app.last_rpc_result {
+                f.render_widget(
+                    Paragraph::new(msg.as_str())
+                        .style(Style::default().fg(*color).add_modifier(Modifier::BOLD)),
+                    chunks[1],
+                );
+            }
         }
 
         let target_route = app.current_route();
@@ -1331,10 +1355,13 @@ fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
                     Style::default().fg(Color::Gray)));
         }
 
-        let block = Block::default()
-            .borders(Borders::TOP)
-            .title(Line::from(" Command Mode ").left_aligned())
-            .title(Line::from(" <Esc> ").right_aligned());
+        let block = if app.footer_height < 3 {
+            Block::default()
+        } else {
+            Block::default().borders(Borders::TOP)
+                            .title(Line::from(" Command Mode ").left_aligned())
+                            .title(Line::from(" <Esc> ").right_aligned())
+        };
 
         f.render_widget(Paragraph::new(Line::from(spans)).block(block), chunks[2]);
         return;
