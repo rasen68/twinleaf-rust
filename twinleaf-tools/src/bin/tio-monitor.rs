@@ -470,7 +470,7 @@ pub struct App {
 const RPCLIST_MAX_LEN: usize = 12;
 
 impl App {
-    pub fn new(all: bool, parent_route: &DeviceRoute, rpcs: &Result<Vec<(u16, String)>, ()>) -> Self {
+    pub fn new(all: bool, parent_route: &DeviceRoute) -> Self {
         Self {
             all,
             parent_route: parent_route.clone(),
@@ -484,7 +484,7 @@ impl App {
             device_metadata: HashMap::new(),
             window_aligned: None,
             footer_height: 0,
-            rpcs: rpcs.clone().expect("Failed to obtain cache list"),
+            rpcs: Vec::new(),
             suggested_rpcs: VecDeque::from(vec![String::new()]),
             suggested_rpcs_len: 1,
             suggested_rpcs_ind: 0,
@@ -1767,16 +1767,22 @@ fn main() {
         }
     });
 
+
+    // Cache thread
+    let (cache_tx, cache_rx) = channel::unbounded();
+    let cache_route = parent_route.clone();
+    let cache_client = RpcClient::open(&proxy, cache_route)
+        .expect("Failed to open RPC client");
+    std::thread::spawn(move || {
+        let Ok(list) = cache_client.rpc_list(cache_client.root_route()) else { return };
+        if cache_tx.send(list).is_err() { return };
+    });
+
     // RPC thread
+    let rpc_client = RpcClient::open(&proxy, parent_route.clone())
+        .expect("Failed to open RPC client");
     let (rpc_tx, rpc_rx) = channel::bounded::<RpcReq>(1);
     let (rpc_resp_tx, rpc_resp_rx) = channel::bounded::<RpcResp>(1);
-    let rpc_client =
-        RpcClient::open(&proxy, parent_route.clone()).expect("Failed to open RPC client");
-
-    // Get RPC list from cache or device
-    let rpcs = rpc_client.rpc_list(&parent_route).map_err(|e| {
-        eprintln!("RPC list failed: {:?}", e);
-    });
 
     std::thread::spawn(move || {
         while let Ok(req) = rpc_rx.recv() {
@@ -1792,13 +1798,13 @@ fn main() {
     std::thread::spawn(move || loop {
         if let Ok(ev) = event::read() {
             if key_tx.send(ev).is_err() {
-                break;
+                return;
             }
         }
     });
 
     // App state
-    let mut app = App::new(cli.all, &parent_route, &rpcs);
+    let mut app = App::new(cli.all, &parent_route);
     if let Some(path) = &cli.colors {
         if let Ok(theme) = load_theme(path) {
             app.view.theme = theme;
@@ -1835,6 +1841,12 @@ fn main() {
                             break 'main;
                         }
                     }
+                }
+            }
+
+            recv(cache_rx) -> list => {
+                if let Ok(list) = list {
+                    app.rpcs = list;
                 }
             }
 
