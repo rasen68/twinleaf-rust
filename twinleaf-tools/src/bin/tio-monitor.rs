@@ -460,6 +460,7 @@ pub struct App {
     pub current_completion: String,
     pub cmd_history: Vec<String>,
     pub history_ptr: Option<usize>,
+    pub present_command: String,
     pub last_rpc_result: Option<(String, Color)>,
     pub last_rpc_command: String,
     pub blink_state: bool,
@@ -491,6 +492,7 @@ impl App {
             current_completion: String::new(),
             cmd_history: Vec::new(),
             history_ptr: None,
+            present_command: String::new(),
             last_rpc_result: None,
             last_rpc_command: String::new(),
             blink_state: true,
@@ -692,15 +694,19 @@ impl App {
             self.input_state = TextState::default();
             self.input_state.focus();
             self.update_command_list();
+            self.present_command = String::new();
         }
-    }
+}
 
     fn navigate_history(&mut self, dir: i8) {
         if self.cmd_history.is_empty() {
             return;
         }
         let new_ptr = match (self.history_ptr, dir) {
-            (None, -1) => Some(self.cmd_history.len() - 1),
+            (None, -1) => {
+                self.present_command = self.input_state.value().to_string();
+                Some(self.cmd_history.len() - 1)
+            },
             (Some(i), -1) => Some(i.saturating_sub(1)),
             (Some(i), 1) => {
                 if i + 1 >= self.cmd_history.len() {
@@ -712,15 +718,15 @@ impl App {
             _ => self.history_ptr,
         };
         self.history_ptr = new_ptr;
-        self.current_completion = String::new();
         if let Some(i) = new_ptr {
             self.input_state = TextState::new().with_value(self.cmd_history[i].clone());
             self.input_state.focus();
             self.input_state.move_end();
         } else {
-            self.input_state = TextState::default();
+            self.input_state = TextState::new().with_value(self.present_command.clone());
             self.input_state.focus();
         }
+        self.update_command_list();
     }
 
     pub fn visible_routes(&self) -> Vec<DeviceRoute> {
