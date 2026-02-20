@@ -26,7 +26,7 @@ use toml_edit::{DocumentMut, InlineTable, Value};
 use tui_prompts::{State, TextState};
 use twinleaf::{
     data::{AlignedWindow, Buffer, ColumnBatch, ColumnData, DeviceFullMetadata, Sample},
-    device::{util, DeviceEvent, DeviceTree, RpcClient, TreeEvent, TreeItem},
+    device::{util, DeviceEvent, DeviceTree, RpcClient, RpcList, TreeEvent, TreeItem},
     tio::{
         self,
         proto::{
@@ -451,7 +451,7 @@ pub struct App {
     pub window_aligned: Option<AlignedWindow>,
 
     pub footer_height: u16,
-    pub rpcs: Vec<(u16, String)>,
+    pub rpcs: RpcList,
     pub suggested_rpcs: VecDeque<String>,
     pub suggested_rpcs_len: usize,
     pub suggested_rpcs_ind: usize,
@@ -484,7 +484,7 @@ impl App {
             device_metadata: HashMap::new(),
             window_aligned: None,
             footer_height: 0,
-            rpcs: Vec::new(),
+            rpcs: RpcList { hash: 0, list: Vec::new() },
             suggested_rpcs: VecDeque::from(vec![String::new()]),
             suggested_rpcs_len: 1,
             suggested_rpcs_ind: 0,
@@ -500,7 +500,7 @@ impl App {
         }
     }
 
-    pub fn update(&mut self, action: Action, rpc_tx: &Sender<RpcReq>) -> bool {
+    pub fn update(&mut self, action: Action, rpc_req_tx: &Sender<RpcReq>) -> bool {
         match action {
             Action::Quit => return true,
             Action::SetMode(Mode::Command) => {
@@ -518,7 +518,7 @@ impl App {
             Action::AutoCompleteTab=> {self.tab_complete()},
             Action::AutoCompleteBack => {self.tab_back_complete()},
             Action::NewCommandString => {self.update_command_list()}
-            Action::SubmitCommand => self.submit_command(rpc_tx),
+            Action::SubmitCommand => self.submit_command(rpc_req_tx),
             Action::AcceptCompletion => self.accept_completion(),
             Action::HistoryNavigate(dir) => self.navigate_history(dir),
             Action::NavUp => {
@@ -636,7 +636,7 @@ impl App {
         let line = self.input_state.value().to_string();
         let mut rpc_cache = Vec::new();
         if !line.is_empty() {
-            for (_, name) in self.rpcs.clone() {
+            for (_, name) in self.rpcs.list.clone() {
                 rpc_cache.push(name);
             }
         }
@@ -662,7 +662,7 @@ impl App {
         self.update_command_list();
     }
 
-    fn submit_command(&mut self, rpc_tx: &Sender<RpcReq>) {
+    fn submit_command(&mut self, rpc_req_tx: &Sender<RpcReq>) {
         // Completion mode: accept completion, don't submit
         if !self.current_completion.is_empty() {
             return self.accept_completion();
@@ -685,7 +685,7 @@ impl App {
                 Some(remainder.join(" "))
             };
             let route = self.current_route();
-            let _ = rpc_tx.send(RpcReq {
+            let _ = rpc_req_tx.send(RpcReq {
                 route: route.clone(),
                 method: method.to_string(),
                 arg,
@@ -1309,7 +1309,7 @@ fn render_footer(f: &mut Frame, app: &mut App, area: Rect) {
             let rpc_block = Block::default()
                 .borders(Borders::ALL)
                 .title(Line::from(" RPCs ").left_aligned())
-                .title(Line::from(" ↑ Shift+Tab | Tab ↓ ").right_aligned());
+                .title(Line::from(" ↑ Shift+Tab | Tab ↓ | Enter → ").right_aligned());
             f.render_widget(
                 List::new(rpcs).block(rpc_block), chunks[0],
             );
@@ -1749,6 +1749,16 @@ fn main() {
     let proxy = tio::proxy::Interface::new(&cli.tio.root);
     let parent_route: DeviceRoute = cli.tio.parse_route();
 
+    // App state
+    let mut app = App::new(cli.all, &parent_route);
+    if let Some(path) = &cli.colors {
+        if let Ok(theme) = load_theme(path) {
+            app.view.theme = theme;
+        } else {
+            eprintln!("Failed to load theme");
+        }
+    }
+
     // Data thread
     let (data_tx, data_rx) = channel::unbounded::<TreeItem>();
     let tree_for_data =
@@ -1767,28 +1777,42 @@ fn main() {
         }
     });
 
-
     // Cache thread
-    let (cache_tx, cache_rx) = channel::unbounded();
+    let (cache_req_tx, cache_req_rx) = channel::unbounded::<bool>();
+    let (cache_resp_tx, cache_resp_rx) = channel::unbounded::<RpcList>();
     let cache_route = parent_route.clone();
     let cache_client = RpcClient::open(&proxy, cache_route)
         .expect("Failed to open RPC client");
+
     std::thread::spawn(move || {
         let Ok(list) = cache_client.rpc_list(cache_client.root_route()) else { return };
-        if cache_tx.send(list).is_err() { return };
+        if cache_resp_tx.send(list).is_err() { return };
+
+        // Send more lists if they're requested
+        while let Ok(req) = cache_req_rx.recv() {
+            if req {
+                let Ok(list) = cache_client.rpc_list(cache_client.root_route()) else { return };
+                if cache_resp_tx.send(list).is_err() { return };
+            }
+        }
     });
 
     // RPC thread
     let rpc_client = RpcClient::open(&proxy, parent_route.clone())
         .expect("Failed to open RPC client");
-    let (rpc_tx, rpc_rx) = channel::bounded::<RpcReq>(1);
+    let (rpc_req_tx, rpc_req_rx) = channel::bounded::<RpcReq>(1);
     let (rpc_resp_tx, rpc_resp_rx) = channel::bounded::<RpcResp>(1);
 
     std::thread::spawn(move || {
-        while let Ok(req) = rpc_rx.recv() {
+        while let Ok(req) = rpc_req_rx.recv() {
             let result = exec_rpc(&rpc_client, &req);
-            if rpc_resp_tx.send(RpcResp { result }).is_err() {
-                return;
+            if rpc_resp_tx.send(RpcResp { result }).is_err() { return };
+
+            // Validate cache
+            match &rpc_client.get::<u32>(rpc_client.root_route(), "rpc.hash") {
+                Ok(h) if *h == app.rpcs.hash => (),
+                Ok(_) => if cache_req_tx.send(true).is_err() { return },
+                Err(_) => (),
             }
         }
     });
@@ -1797,29 +1821,16 @@ fn main() {
     let (key_tx, key_rx) = channel::unbounded();
     std::thread::spawn(move || loop {
         if let Ok(ev) = event::read() {
-            if key_tx.send(ev).is_err() {
-                return;
-            }
+            if key_tx.send(ev).is_err() { return };
         }
     });
-
-    // App state
-    let mut app = App::new(cli.all, &parent_route);
-    if let Some(path) = &cli.colors {
-        if let Ok(theme) = load_theme(path) {
-            app.view.theme = theme;
-        } else {
-            eprintln!("Failed to load theme");
-        }
-    }
-
-    let mut buffer = Buffer::new(100_000);
 
     // UI
     let mut term = ratatui::init();
     let _ = term.hide_cursor();
     let ui_tick = channel::tick(Duration::from_millis(1000 / cli.fps as u64));
 
+    let mut buffer = Buffer::new(100_000);
     'main: loop {
         crossbeam::select! {
             recv(data_rx) -> item => {
@@ -1837,14 +1848,14 @@ fn main() {
             recv(key_rx) -> ev => {
                 if let Ok(ev) = ev {
                     if let Some(act) = get_action(ev, &mut app) {
-                        if app.update(act, &rpc_tx) {
+                        if app.update(act, &rpc_req_tx) {
                             break 'main;
                         }
                     }
                 }
             }
 
-            recv(cache_rx) -> list => {
+            recv(cache_resp_rx) -> list => {
                 if let Ok(list) = list {
                     app.rpcs = list;
                 }
