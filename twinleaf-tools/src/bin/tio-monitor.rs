@@ -35,21 +35,8 @@ use twinleaf::{
         },
     },
 };
-use twinleaf_tools::TioOpts;
+use twinleaf_tools::MonitorCli;
 use welch_sde::{Build, SpectralDensity};
-
-#[derive(Parser, Debug)]
-#[command(name = "tio-monitor", version, about = "Display live sensor data")]
-struct Cli {
-    #[command(flatten)]
-    tio: TioOpts,
-    #[arg(short = 'a', long = "all")]
-    all: bool,
-    #[arg(long = "fps", default_value_t = 20)]
-    fps: u32,
-    #[arg(short = 'c', long = "colors")]
-    colors: Option<String>,
-}
 
 #[derive(Debug, Clone)]
 pub enum NavPos {
@@ -1744,8 +1731,9 @@ fn get_num(it: &InlineTable, k: &str) -> Option<f64> {
     it.get(k)
         .and_then(|v| v.as_float().or(v.as_integer().map(|i| i as f64)))
 }
+
 fn main() {
-    let cli = Cli::parse();
+    let cli = MonitorCli::parse();
     let proxy = tio::proxy::Interface::new(&cli.tio.root);
     let parent_route: DeviceRoute = cli.tio.parse_route();
 
