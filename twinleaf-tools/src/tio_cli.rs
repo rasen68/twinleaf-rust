@@ -1,19 +1,33 @@
-use std::time::Duration;
-use clap::{Subcommand, ValueEnum};
+use clap::{ValueEnum, Subcommand};
+
+include!("proxy_cli.rs");
+include!("health_cli.rs");
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "tio-tool",
+    name = "tio",
     version,
     about = "Twinleaf sensor management and data logging tool"
 )]
-pub struct TioToolCli {
+pub struct TioCli {
     #[command(subcommand)]
     pub command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+	Proxy(ProxyCli),
+	Monitor {
+		#[command(flatten)]
+		tio: TioOpts,
+		#[arg(short = 'a', long = "all")]
+		all: bool,
+		#[arg(long = "fps", default_value_t = 20)]
+		fps: u32,
+		#[arg(short = 'c', long = "colors")]
+		colors: Option<String>,
+	},
+	Health(HealthCli),
     /// List available RPCs on the device
     RpcList {
         #[command(flatten)]

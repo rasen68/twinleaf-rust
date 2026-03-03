@@ -7,7 +7,6 @@
 // Quit:  q / Esc / Ctrl-C
 
 use chrono::{DateTime, Local};
-use clap::Parser;
 use crossbeam::channel;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
@@ -30,7 +29,7 @@ use twinleaf::{
         proto::{identifiers::StreamKey, DeviceRoute},
     },
 };
-use twinleaf_tools::HealthCli;
+use crate::HealthCli;
 
 #[derive(Default)]
 struct DeviceState {
@@ -578,12 +577,10 @@ enum DataMsg {
     Error(String),
 }
 
-fn main() {
-    let cli = HealthCli::parse();
+pub fn run_health(health_cli: HealthCli) -> Result<(), ()> {
     let mut terminal = ratatui::init();
-
-    let proxy = tio::proxy::Interface::new(&cli.tio.root);
-    let root_route = cli.tio.parse_route();
+    let proxy = tio::proxy::Interface::new(&health_cli.tio.root);
+    let root_route = health_cli.tio.parse_route();
 
     let tree = match DeviceTree::open(&proxy, root_route) {
         Ok(t) => t,
@@ -650,11 +647,11 @@ fn main() {
     let mut event_scroll_offset: usize = 0;
     let mut show_heartbeat: bool = false;
 
-    let streams_filter = cli.streams.clone();
-    let jitter_window_s = cli.jitter_window;
-    let event_log_cap = cli.event_log_size as usize;
+    let streams_filter = health_cli.streams.clone();
+    let jitter_window_s = health_cli.jitter_window;
+    let event_log_cap = health_cli.event_log_size as usize;
 
-    let ui_tick = channel::tick(Duration::from_millis(1000 / cli.fps));
+    let ui_tick = channel::tick(Duration::from_millis(1000 / health_cli.fps));
 
     'main: loop {
         let mut needs_redraw = false;
@@ -777,10 +774,10 @@ fn main() {
 
                     let events_to_show: Vec<&LoggedEvent> = event_log
                         .iter()
-                        .filter(|e| !cli.warnings_only || matches!(e.color, Color::Red | Color::Yellow))
+                        .filter(|e| !health_cli.warnings_only || matches!(e.color, Color::Red | Color::Yellow))
                         .collect();
                     let total = events_to_show.len();
-                    let display_count = cli.event_display_lines as usize;
+                    let display_count = health_cli.event_display_lines as usize;
 
                     match k.code {
                         KeyCode::Char('h') => {
@@ -837,7 +834,7 @@ fn main() {
                 &event_log,
                 event_scroll_offset,
                 show_heartbeat,
-                &cli,
+                &health_cli,
             )
             .is_err()
             {
@@ -847,4 +844,5 @@ fn main() {
     }
 
     ratatui::restore();
+    Ok(())
 }

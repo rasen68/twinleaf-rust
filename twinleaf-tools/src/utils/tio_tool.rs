@@ -2,19 +2,17 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
-use std::process::ExitCode;
 
-use clap::{Parser};
 use tio::proto::DeviceRoute;
 use tio::proxy;
 use tio::util;
 use twinleaf::data::DeviceDataParser;
 use twinleaf::device::{Device, DeviceTree, RpcClient};
 use twinleaf::tio;
-use twinleaf_tools::TioOpts;
-use twinleaf_tools::{TioToolCli, SplitLevel, SplitPolicy, Commands};
+use crate::TioOpts;
+use crate::{SplitLevel, SplitPolicy};
 
-fn list_rpcs(tio: &TioOpts) -> Result<(), ()> {
+pub fn list_rpcs(tio: &TioOpts) -> Result<(), ()> {
     let proxy = proxy::Interface::new(&tio.root);
     let route = tio.parse_route();
     let rpc_client = RpcClient::open(&proxy, route.clone()).expect("Failed to open RPC client");
@@ -47,7 +45,7 @@ fn get_rpctype(name: &String, device: &proxy::Port) -> String {
     }
 }
 
-fn rpc(
+pub fn rpc(
     tio: &TioOpts,
     rpc_name: String,
     rpc_arg: Option<String>,
@@ -169,7 +167,7 @@ fn rpc(
     Ok(())
 }
 
-fn rpc_dump(tio: &TioOpts, rpc_name: String, is_capture: bool) -> Result<(), ()> {
+pub fn rpc_dump(tio: &TioOpts, rpc_name: String, is_capture: bool) -> Result<(), ()> {
     let rpc_name = if is_capture {
         rpc_name.clone() + ".block"
     } else {
@@ -211,7 +209,7 @@ fn rpc_dump(tio: &TioOpts, rpc_name: String, is_capture: bool) -> Result<(), ()>
     Ok(())
 }
 
-fn dump(tio: &TioOpts, data: bool, meta: bool, depth: Option<usize>) -> Result<(), ()> {
+pub fn dump(tio: &TioOpts, data: bool, meta: bool, depth: Option<usize>) -> Result<(), ()> {
     let proxy = proxy::Interface::new(&tio.root);
     let route = tio.parse_route();
 
@@ -299,26 +297,7 @@ fn print_sample(
     }
 }
 
-// Deprecated wrappers
-fn data_dump_deprecated(tio: &TioOpts) -> Result<(), ()> {
-    eprintln!("Warning: data-dump is deprecated, use 'dump -d -m --depth 0' instead");
-    eprintln!();
-    dump(tio, true, true, Some(0))
-}
-
-fn data_dump_all_deprecated(tio: &TioOpts) -> Result<(), ()> {
-    eprintln!("Warning: data-dump-all is deprecated, use 'dump -d -m' instead");
-    eprintln!();
-    dump(tio, true, true, None)
-}
-
-fn meta_dump_deprecated(tio: &TioOpts) -> Result<(), ()> {
-    eprintln!("Warning: meta-dump is deprecated, use 'dump -m --depth 0' instead");
-    eprintln!();
-    dump(tio, false, true, Some(0))
-}
-
-fn log(
+pub fn log(
     tio: &TioOpts,
     file: String,
     unbuffered: bool,
@@ -413,7 +392,7 @@ fn log(
     Ok(())
 }
 
-fn log_metadata(tio: &TioOpts, file: String) -> Result<(), ()> {
+pub fn log_metadata(tio: &TioOpts, file: String) -> Result<(), ()> {
     let proxy = proxy::Interface::new(&tio.root);
     let route = tio.parse_route();
 
@@ -442,7 +421,7 @@ fn log_metadata(tio: &TioOpts, file: String) -> Result<(), ()> {
     Ok(())
 }
 
-fn log_dump(
+pub fn log_dump(
     files: Vec<String>,
     data: bool,
     meta: bool,
@@ -543,13 +522,7 @@ fn log_dump(
     Ok(())
 }
 
-fn log_data_dump_deprecated(files: Vec<String>) -> Result<(), ()> {
-    eprintln!("Warning: log-data-dump is deprecated, use 'log-dump -d -m' instead");
-    eprintln!();
-    log_dump(files, true, true, "/".to_string(), None)
-}
-
-fn log_csv(
+pub fn log_csv(
     stream_arg: String,
     files: Vec<String>,
     sensor: Option<String>,
@@ -663,7 +636,7 @@ fn log_csv(
 }
 
 #[cfg(feature = "hdf5")]
-fn log_hdf(
+pub fn log_hdf(
     files: Vec<String>,
     output: Option<String>,
     filter: Option<String>,
@@ -816,7 +789,7 @@ fn log_hdf(
 }
 
 #[cfg(not(feature = "hdf5"))]
-fn log_hdf(
+pub fn log_hdf(
     _files: Vec<String>,
     _output: Option<String>,
     _filter: Option<String>,
@@ -831,7 +804,7 @@ fn log_hdf(
     Err(())
 }
 
-fn firmware_upgrade(tio: &TioOpts, firmware_path: String) -> Result<(), ()> {
+pub fn firmware_upgrade(tio: &TioOpts, firmware_path: String) -> Result<(), ()> {
     let firmware_data = std::fs::read(firmware_path).unwrap();
 
     println!("Loaded {} bytes firmware", firmware_data.len());
@@ -929,82 +902,4 @@ fn firmware_upgrade(tio: &TioOpts, firmware_path: String) -> Result<(), ()> {
         panic!("upgrade failed");
     }
     Ok(())
-}
-
-fn main() -> ExitCode {
-    let cli = TioToolCli::parse();
-
-    let result = match cli.command {
-        Commands::RpcList { tio } => list_rpcs(&tio),
-        Commands::Rpc {
-            tio,
-            rpc_name,
-            rpc_arg,
-            req_type,
-            rep_type,
-            debug,
-        } => rpc(&tio, rpc_name, rpc_arg, req_type, rep_type, debug),
-        Commands::RpcDump {
-            tio,
-            rpc_name,
-            capture,
-        } => rpc_dump(&tio, rpc_name, capture),
-        Commands::Dump {
-            tio,
-            data,
-            meta,
-            depth,
-        } => dump(&tio, data, meta, depth),
-        Commands::Log {
-            tio,
-            file,
-            unbuffered,
-            raw,
-            depth,
-        } => log(&tio, file, unbuffered, raw, depth),
-        Commands::LogMetadata { tio, file } => log_metadata(&tio, file),
-        Commands::LogDump {
-            files,
-            data,
-            meta,
-            sensor,
-            depth,
-        } => log_dump(files, data, meta, sensor, depth),
-        Commands::LogDataDump { files } => log_data_dump_deprecated(files),
-        Commands::LogCsv {
-            stream,
-            files,
-            sensor,
-            metadata,
-            output,
-        } => log_csv(stream, files, sensor, metadata, output),
-        Commands::LogHdf {
-            files,
-            output,
-            filter,
-            compress,
-            debug,
-            split_level,
-            split_policy,
-        } => log_hdf(
-            files,
-            output,
-            filter,
-            compress,
-            debug,
-            split_level,
-            split_policy,
-        ),
-        Commands::FirmwareUpgrade { tio, firmware_path } => firmware_upgrade(&tio, firmware_path),
-        Commands::DataDump { tio } => data_dump_deprecated(&tio),
-        Commands::DataDumpAll { tio } => data_dump_all_deprecated(&tio),
-        Commands::MetaDump { tio } => meta_dump_deprecated(&tio),
-    };
-
-    if result.is_ok() {
-        ExitCode::SUCCESS
-    } else {
-        eprintln!("FAILED");
-        ExitCode::FAILURE
-    }
 }

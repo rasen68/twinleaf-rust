@@ -9,16 +9,10 @@ fn main() -> Result<(), io::Error> {
         None => return Ok(()),
         Some(outdir) => outdir,
     };
-
-    let mut proxy_cmd = ProxyCli::command();
-    let mut tool_cmd = TioToolCli::command();
-    let mut monitor_cmd = MonitorCli::command();
-    let mut health_cmd = HealthCli::command();
+	
+	let mut tio_cmd = TioCli::command();
     for &shell in Shell::value_variants() {
-        generate_to(shell, &mut proxy_cmd, "tio-proxy", &outdir)?;
-        generate_to(shell, &mut tool_cmd, "tio-tool", &outdir)?;
-        generate_to(shell, &mut monitor_cmd, "tio-monitor", &outdir)?;
-        generate_to(shell, &mut health_cmd, "tio-health", &outdir)?;
+        generate_to(shell, &mut tio_cmd, "tio", &outdir)?;
     }
 
     Ok(())
