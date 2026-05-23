@@ -54,7 +54,7 @@ fn report_missing_metadata(mut routes: Vec<DeviceRoute>, is_error: bool) {
     eprintln!("Hint: ensure the log includes metadata or capture it with `tio log metadata`, including it as an argument before the log.");
 }
 
-pub fn list_rpcs(tio: &TioOpts) -> eyre::Result<()> {
+pub fn list_rpcs(tio: &TioOpts, name_only: bool) -> eyre::Result<()> {
     use eyre::WrapErr;
 
     let proxy = proxy::Interface::new(&tio.root);
@@ -66,14 +66,18 @@ pub fn list_rpcs(tio: &TioOpts) -> eyre::Result<()> {
         .wrap_err("failed to query RPC list")?;
 
     for (name, _) in rpcs.vec {
-        let spec =
-            twinleaf::device::util::parse_rpc_spec(*rpcs.map.get(&name).unwrap(), name.to_string());
-        println!(
-            "{} {}({})",
-            spec.perm_str(),
-            spec.full_name,
-            spec.type_str()
-        );
+        if name_only {
+            println!("{}", name);
+        } else {
+            let spec =
+                twinleaf::device::util::parse_rpc_spec(*rpcs.map.get(&name).unwrap(), name.to_string());
+            println!(
+                "{} {}({})",
+                spec.perm_str(),
+                spec.full_name,
+                spec.type_str()
+            );
+        }
     }
 
     Ok(())

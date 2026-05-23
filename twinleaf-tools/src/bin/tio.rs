@@ -45,7 +45,10 @@ fn main() -> eyre::Result<()> {
             rep_type,
             debug,
         } => match subcommands {
-            Some(RPCSubcommands::List { tio }) => list_rpcs(&tio),
+            Some(RPCSubcommands::List {
+                tio,
+                name_only,
+            }) => list_rpcs(&tio, name_only),
             Some(RPCSubcommands::Dump {
                 tio,
                 rpc_name,
