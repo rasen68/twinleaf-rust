@@ -74,10 +74,12 @@ _tio() {
                 cmd="tio__subcmd__rpc__subcmd__list"
                 ;;
 			# Treat rpcs as subcommands so we don't double-complete
-			# Anything not starting with a - other than dump, list
-			# will be treated as an RPC
+			# Anything not starting with a - will be treated as an RPC
             tio__subcmd__rpc,[^-]*)
                 cmd="tio__subcmd__rpc__subcmd__rpcname"
+                ;;
+            tio__subcmd__rpc__subcmd__dump,[^-]*)
+                cmd="tio__subcmd__rpc__subcmd__dump__subcmd__rpcname"
                 ;;
             *)
                 ;;
@@ -668,7 +670,43 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc__subcmd__dump)
-            opts="-r -s -h --root --sensor --capture --help <RPC_NAME>"
+			# TODO: Only ask for .dump or whatever RPCs
+			# Read rpcs into list
+			local rpcs
+			rpcs="$( tio rpc list --name-only 2>/dev/null || echo 'RPC_LIST_FAILED]')"
+			rpcs="${rpcs//\\n/ }" # replace newlines with spaces
+			rpcs="${rpcs% }"     # remove trailing whitespace
+            opts="-r -s -h --root --sensor --capture --help $rpcs"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -r)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --sensor)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -s)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        tio__subcmd__rpc__subcmd__dump__subcmd__rpcname)
+            opts="-r -s -h --root --sensor --capture"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
