@@ -1,4 +1,5 @@
-use clap::{CommandFactory, Parser};
+use clap::Parser;
+//use clap::CommandFactory;
 use twinleaf_tools::tools::{
     health::run_health,
     list::list_devices,
@@ -128,7 +129,16 @@ fn main() -> eyre::Result<()> {
             yes,
         } => firmware_upgrade(&tio, firmware_path, yes),
         Commands::Completions { shell } => {
-            clap_complete::generate(shell, &mut TioCli::command(), "tio", &mut std::io::stdout());
+            let completions = match shell {
+                clap_complete::Shell::Bash => include_str!("../../completion-scripts/tio_completions_dynamic.bash"),
+                clap_complete::Shell::Zsh => include_str!("../../completion-scripts/tio_completions_dynamic.zsh"),
+                clap_complete::Shell::Fish => include_str!("../../completion-scripts/tio_completions_static.fish"),
+                clap_complete::Shell::Elvish => include_str!("../../completion-scripts/tio_completions_static.elv"),
+                clap_complete::Shell::PowerShell => include_str!("../../completion-scripts/tio_completions_static.ps1"),
+                _ => "unknown shell", // Should get stopped at clap parse and never get here
+            };
+            print!("{}", completions);
+            //clap_complete::generate(shell, &mut TioCli::command(), "tio", &mut std::io::stdout());
             Ok(())
         }
     }
