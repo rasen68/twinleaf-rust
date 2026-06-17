@@ -33,7 +33,6 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 
 
     // Read dynamic RPC completions into options list
-    // TODO: do we need --name-only or can we just do param sub? which is better?
     let completions = completions.replace("
         tio__subcmd__rpc)
             opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [RPC_NAME] [ARG] list dump\"
