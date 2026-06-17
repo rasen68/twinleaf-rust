@@ -166,7 +166,88 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 }
 
 fn generate_zsh_dynamic() -> eyre::Result<()> {
-    let completions = include_str!("../../completion-scripts/tio_completions_dynamic.zsh");
+    let completions = include_str!("../../completion-scripts/tio_completions_static.zsh");
+
+    // First remove rpc name and arg from rpc opts
+    let completions = completions.replace("
+'::rpc_name -- RPC name to execute:' \\
+'::rpc_arg -- RPC argument value:' \\", "");
+
+    // Change matching logic to look at last completed word
+    let completions = completions.replace("
+        words=($line[3] \"${words[@]}\")
+        (( CURRENT += 1 ))
+        curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[3]:\"
+        case $line[3] in
+            (list)",
+
+    "
+        words=($line[1] \"${words[@]}\")
+		(( CURRENT += 1 ))
+		curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[1]:\"
+		case $line[1] in
+			(list)");
+
+    // Remove rpc name from dump opts, 
+    // And use it as a hook to add case for last word being just "rpc"
+    // If it is, we are at "tio rpc" and want to complete rpc names
+    let completions = completions.replace("
+':rpc_name -- RPC name to dump:' \\",
+
+    "
+':: :_tio__subcmd__rpc_names' \\
+&& ret=0
+;;
+(rpc)
+;;
+([^-]*)
+_arguments \"${_arguments_options[@]}\" : \\
+'-r+[Sensor root address]:ROOT:_urls' \\
+'--root=[Sensor root address]:ROOT:_urls' \\
+'-s+[Sensor path in the sensor tree]:ROUTE:_default' \\
+'--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \\
+'-t+[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'--req-type=[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'-T+[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'-d[Enable debug output]' \\
+'--debug[Enable debug output]' \\
+':rpc_arg -- RPC argument value:'\\");
+
+    // Add functions to dynamically get rpc names,
+    // Replacing old completion case for "tio rpc [list/dump/[RPC_NAME]"
+    let completions = completions.replace("
+(( $+functions[_tio__subcmd__rpc_commands] )) ||
+_tio__subcmd__rpc_commands() {
+    local commands; commands=(
+'list:List available RPCs on the device' \\
+'dump:Dump RPC data from the device' \\
+    )
+    _describe -t commands 'tio rpc commands' commands \"$@\"",
+
+    "
+(( $+functions[_tio__subcmd__rpc_names] )) ||
+_tio__subcmd__rpc_names() {
+    local commands
+	IFS=$'\\n' commands=($(tio rpc list --name-only))
+    _describe -t commands 'rpc names' commands \"$@\"
+}
+(( $+functions[_tio__subcmd__rpc_commands] )) ||
+_tio__subcmd__rpc_commands() {
+    local commands
+	IFS=$'\\n' commands=($(tio rpc list --name-only))
+	commands=( \"${commands[@]}\"
+'list:List available RPCs on the device' \\
+'dump:Dump RPC data from the device' \\
+    )
+    _describe -t commands 'rpc names / tio rpc commands' commands \"$@\"
+}
+(( $+functions[_tio__subcmd__rpc_names] )) ||
+_tio__subcmd__rpc_names() {
+    local commands
+	IFS=$'\\n' commands=($(tio rpc list --name-only))
+    _describe -t commands 'rpc names' commands \"$@\"");
+
     print!("{}", completions);
     Ok(())
 }
