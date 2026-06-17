@@ -16,6 +16,9 @@ _tio() {
             ",$1")
                 cmd="tio"
                 ;;
+            tio,capture)
+                cmd="tio__subcmd__capture"
+                ;;
             tio,completions)
                 cmd="tio__subcmd__completions"
                 ;;
@@ -39,6 +42,9 @@ _tio() {
                 ;;
             tio,rpc)
                 cmd="tio__subcmd__rpc"
+                ;;
+            tio,simulate)
+                cmd="tio__subcmd__simulate"
                 ;;
             tio,test)
                 cmd="tio__subcmd__test"
@@ -73,8 +79,6 @@ _tio() {
             tio__subcmd__rpc,list)
                 cmd="tio__subcmd__rpc__subcmd__list"
                 ;;
-			# Treat rpcs as subcommands so we don't double-complete
-			# Anything not starting with a - will be treated as an RPC
             tio__subcmd__rpc,[^-]*)
                 cmd="tio__subcmd__rpc__subcmd__rpcname"
                 ;;
@@ -88,7 +92,7 @@ _tio() {
 
     case "${cmd}" in
         tio)
-            opts="-h -V --help --version list monitor health dump log rpc upgrade proxy test completions"
+            opts="-h -V --help --version list monitor health dump log rpc capture upgrade proxy simulate test completions"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -101,8 +105,42 @@ _tio() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        tio__subcmd__capture)
+            opts="-r -s -h --root --sensor --timeout --help [RPC_NAME]"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -r)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --sensor)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -s)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --timeout)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         tio__subcmd__completions)
-            opts="-h --help bash elvish fish powershell zsh"
+            opts="-s -h -V --static --help --version bash elvish fish powershell zsh"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -116,7 +154,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__dump)
-            opts="-r -s -d -m -h --root --sensor --data --meta --depth --help"
+            opts="-r -s -d -m -h --root --sensor --data --meta --depth --duration --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -139,6 +177,10 @@ _tio() {
                     return 0
                     ;;
                 --depth)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --duration)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -272,7 +314,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__log__subcmd__csv)
-            opts="-s -o -h --help [ARGS]..."
+            opts="-s -o -f -h --force --help [ARGS]..."
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -440,7 +482,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__monitor)
-            opts="-r -s -c -h --root --sensor --fps --colors --depth --help"
+            opts="-r -s -c -h -V --root --sensor --fps --colors --depth --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -486,12 +528,16 @@ _tio() {
             return 0
             ;;
         tio__subcmd__proxy)
-            opts="-p -k -s -v -d -t -T -a -e -h -V --port --kick-slow --subtree --verbose --debug --timestamp --timeout --dump --dump-data --dump-meta --dump-hb --auto --enumerate --help --version [SENSOR_URL] nmea"
+            opts="-p -k -s -v -d -t -T -a -e -h -V --mount --port --kick-slow --subtree --verbose --debug --timestamp --timeout --dump --dump-data --dump-meta --dump-hb --auto --enumerate --help --version [SENSOR_URL] nmea"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --mount)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --port)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
@@ -570,13 +616,11 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc)
-			# Read rpcs into list
 			local rpcs
-			rpcs="$( tio rpc list --name-only 2>/dev/null || echo 'RPC_LIST_FAILED]')"
+			rpcs="$( tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
 			rpcs="${rpcs//\\n/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
 			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $rpcs"
-			
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -622,8 +666,6 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc__subcmd__rpcname)
-			# This treats "tio rpc {rpcname}" as a subcommand of tio rpc
-			# and suggests an arg instead of more rpc names
 			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug [ARG]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -669,11 +711,10 @@ _tio() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+
         tio__subcmd__rpc__subcmd__dump)
-			# TODO: Only ask for .dump or whatever RPCs
-			# Read rpcs into list
 			local rpcs
-			rpcs="$( tio rpc list --name-only 2>/dev/null || echo 'RPC_LIST_FAILED]')"
+			rpcs="$( tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
 			rpcs="${rpcs//\\n/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
             opts="-r -s -h --root --sensor --capture --help $rpcs"
@@ -765,6 +806,44 @@ _tio() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        tio__subcmd__simulate)
+            opts="-h -V --samplerate --frequency --amplitude --noise --segment-seconds --port --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --samplerate)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --frequency)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --amplitude)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --noise)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --segment-seconds)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --port)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         tio__subcmd__test)
             opts="-h -V --samplerate --frequency --amplitude --noise --segment-seconds --port --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -804,7 +883,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__upgrade)
-            opts="-r -s -y -h --root --sensor --yes --help <FIRMWARE_PATH>"
+            opts="-r -s -y -h --root --sensor --downgrade --yes --help [FIRMWARE_PATH]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
