@@ -32,9 +32,11 @@ complete -c tio -n "__fish_tio_needs_command" -f -a "health" -d 'Live timing and
 complete -c tio -n "__fish_tio_needs_command" -f -a "dump" -d 'Dump raw packets from a device'
 complete -c tio -n "__fish_tio_needs_command" -f -a "log" -d 'Log samples to a file'
 complete -c tio -n "__fish_tio_needs_command" -f -a "rpc" -d 'Execute a device RPC'
+complete -c tio -n "__fish_tio_needs_command" -f -a "capture" -d 'Trigger and read a capture RPC'
 complete -c tio -n "__fish_tio_needs_command" -f -a "upgrade" -d 'Upgrade device firmware'
 complete -c tio -n "__fish_tio_needs_command" -f -a "proxy" -d 'Multiplex a sensor over TCP'
-complete -c tio -n "__fish_tio_needs_command" -f -a "test" -d 'Run a simulated sine wave Twinleaf device over UDP'
+complete -c tio -n "__fish_tio_needs_command" -f -a "simulate" -d 'Run a simulated sine wave Twinleaf device over UDP'
+complete -c tio -n "__fish_tio_needs_command" -f -a "test" -d '(deprecated, use `simulate`) Run a simulated sine wave Twinleaf device over UDP'
 complete -c tio -n "__fish_tio_needs_command" -f -a "completions" -d 'Generate shell completions for tio'
 complete -c tio -n "__fish_tio_using_subcommand list" -s a -l all -d 'Include serial ports with unknown VID/PID'
 complete -c tio -n "__fish_tio_using_subcommand list" -s h -l help -d 'Print help'
@@ -44,13 +46,14 @@ complete -c tio -n "__fish_tio_using_subcommand monitor" -l fps -r
 complete -c tio -n "__fish_tio_using_subcommand monitor" -s c -l colors -r
 complete -c tio -n "__fish_tio_using_subcommand monitor" -l depth -d 'Routing depth limit (default: unlimited)' -r
 complete -c tio -n "__fish_tio_using_subcommand monitor" -s h -l help -d 'Print help'
+complete -c tio -n "__fish_tio_using_subcommand monitor" -s V -l version -d 'Print version'
 complete -c tio -n "__fish_tio_using_subcommand health" -s r -l root -d 'Sensor root address' -r -f
 complete -c tio -n "__fish_tio_using_subcommand health" -s s -l sensor -d 'Sensor path in the sensor tree' -r
 complete -c tio -n "__fish_tio_using_subcommand health" -l jitter-window -d 'Seconds for jitter calculation window (>= 1)' -r
 complete -c tio -n "__fish_tio_using_subcommand health" -l ppm-warn -d 'Warning threshold in parts per million (>= 0)' -r
 complete -c tio -n "__fish_tio_using_subcommand health" -l ppm-err -d 'Error threshold in parts per million (>= 0)' -r
 complete -c tio -n "__fish_tio_using_subcommand health" -l streams -d 'Comma-separated stream IDs to monitor (e.g., 0,1,5)' -r
-complete -c tio -n "__fish_tio_using_subcommand health" -l fps -d 'UI refresh rate for heartbeat animation and stale detection (1–60)' -r
+complete -c tio -n "__fish_tio_using_subcommand health" -l fps -d 'UI refresh rate for heartbeat animation and stale detection (1-60)' -r
 complete -c tio -n "__fish_tio_using_subcommand health" -l stale-ms -d 'Mark streams as stale after this many milliseconds without data (>= 1)' -r
 complete -c tio -n "__fish_tio_using_subcommand health" -s n -l event-log-size -d 'Maximum number of events to keep in history (>= 1)' -r
 complete -c tio -n "__fish_tio_using_subcommand health" -l event-display-lines -d 'Number of event lines to show (>= 3)' -r
@@ -61,6 +64,7 @@ complete -c tio -n "__fish_tio_using_subcommand health" -s V -l version -d 'Prin
 complete -c tio -n "__fish_tio_using_subcommand dump" -s r -l root -d 'Sensor root address' -r -f
 complete -c tio -n "__fish_tio_using_subcommand dump" -s s -l sensor -d 'Sensor path in the sensor tree' -r
 complete -c tio -n "__fish_tio_using_subcommand dump" -l depth -d 'Routing depth limit (default: unlimited)' -r
+complete -c tio -n "__fish_tio_using_subcommand dump" -l duration -d 'Stop after this wall-clock duration (e.g. 30s, 5m, 2h)' -r
 complete -c tio -n "__fish_tio_using_subcommand dump" -s d -l data -d 'Show parsed data samples'
 complete -c tio -n "__fish_tio_using_subcommand dump" -s m -l meta -d 'Show metadata on boundaries'
 complete -c tio -n "__fish_tio_using_subcommand dump" -s h -l help -d 'Print help'
@@ -88,13 +92,14 @@ complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from dump" -s m -l meta -d 'Show metadata on boundaries'
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from dump" -s h -l help -d 'Print help'
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from inspect" -s h -l help -d 'Print help'
-complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from csv" -s s -d 'Sensor route in the device tree (default: /)' -r
+complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from csv" -s s -d 'Sensor route in the device tree (default: /); overridden by a route prefix in the selector' -r
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from csv" -s o -d 'Output filename prefix' -r
+complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from csv" -s f -l force -d 'Overwrite the output file if it already exists'
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from csv" -s h -l help -d 'Print help'
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from hdf" -s o -d 'Output file path (defaults to input filename with .h5 extension)' -r
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from hdf" -s g -l glob -d 'Filter streams using a glob pattern (e.g. "/*/vector")' -r
-complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from hdf" -s l -l split -d 'How to organize runs in the output (none=flat, stream=per-stream, device=per-device, global=all-shared)' -r -f -a "none\t'No run splitting - flat structure: /{route}/{stream}/{datasets}'
-stream\t'Each stream has independent run counter'
+complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from hdf" -s l -l split -d 'How to organize runs in the output (none=flat, stream=per-stream, device=per-device, global=all-shared)' -r -f -a "none\t'No run splitting - one table per stream: /{route}/{stream}'
+stream\t'Each stream has independent run counter (separate table per run)'
 device\t'All streams on a device share run counter'
 global\t'All streams globally share run counter'"
 complete -c tio -n "__fish_tio_using_subcommand log; and __fish_seen_subcommand_from hdf" -s p -l policy -d 'When to detect discontinuities (continuous=any gap, monotonic=only time backward)' -r -f -a "continuous\t'Split on any discontinuity (gaps, rate changes, etc.)'
@@ -132,19 +137,25 @@ complete -c tio -n "__fish_tio_using_subcommand rpc; and not __fish_seen_subcomm
 complete -c tio -n "__fish_tio_using_subcommand rpc; and not __fish_seen_subcommand_from list dump" -a "dump" -d 'Dump RPC data from the device'
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -s r -l root -d 'Sensor root address' -r -f
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -s s -l sensor -d 'Sensor path in the sensor tree' -r
-complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -l name-only -d 'Output only names, not permissions or types'
+complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -l name-only -d 'List names without permissions and types (mostly for internal completions use)'
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -s h -l help -d 'Print help'
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from dump" -s r -l root -d 'Sensor root address' -r -f
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from dump" -s s -l sensor -d 'Sensor path in the sensor tree' -r
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from dump" -l capture -d 'Trigger a capture before dumping'
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from dump" -s h -l help -d 'Print help'
+complete -c tio -n "__fish_tio_using_subcommand capture" -s r -l root -d 'Sensor root address' -r -f
+complete -c tio -n "__fish_tio_using_subcommand capture" -s s -l sensor -d 'Sensor path in the sensor tree' -r
+complete -c tio -n "__fish_tio_using_subcommand capture" -l timeout -d 'Maximum time to wait for capture data' -r
+complete -c tio -n "__fish_tio_using_subcommand capture" -s h -l help -d 'Print help'
 complete -c tio -n "__fish_tio_using_subcommand upgrade" -s r -l root -d 'Sensor root address' -r -f
 complete -c tio -n "__fish_tio_using_subcommand upgrade" -s s -l sensor -d 'Sensor path in the sensor tree' -r
+complete -c tio -n "__fish_tio_using_subcommand upgrade" -l downgrade -d 'List all published firmware for the connected sensor and interactively pick one to install (allows installing an older release)'
 complete -c tio -n "__fish_tio_using_subcommand upgrade" -s y -l yes -d 'Skip confirmation prompt'
 complete -c tio -n "__fish_tio_using_subcommand upgrade" -s h -l help -d 'Print help'
+complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -l mount -d 'Mount a sensor at a route prefix to multiplex multiple devices (repeatable)' -r
 complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -s p -l port -d 'TCP port to listen on for clients' -r
 complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -s s -l subtree -d 'Sensor subtree to look at' -r
-complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -s t -l timestamp -d 'Timestamp format' -r
+complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -s t -l timestamp -d 'Deprecated; timestamps are now emitted by the logger (set RUST_LOG to control verbosity)' -r
 complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -s T -l timeout -d 'Time limit for sensor reconnection attempts (seconds)' -r
 complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -s k -l kick-slow -d 'Kick off slow clients instead of dropping traffic'
 complete -c tio -n "__fish_tio_using_subcommand proxy; and not __fish_seen_subcommand_from nmea" -s v -l verbose -d 'Verbose output'
@@ -162,6 +173,14 @@ complete -c tio -n "__fish_tio_using_subcommand proxy; and __fish_seen_subcomman
 complete -c tio -n "__fish_tio_using_subcommand proxy; and __fish_seen_subcommand_from nmea" -s s -l sensor -d 'Sensor path in the sensor tree' -r
 complete -c tio -n "__fish_tio_using_subcommand proxy; and __fish_seen_subcommand_from nmea" -s p -l port -d 'TCP port to listen on' -r
 complete -c tio -n "__fish_tio_using_subcommand proxy; and __fish_seen_subcommand_from nmea" -s h -l help -d 'Print help'
+complete -c tio -n "__fish_tio_using_subcommand simulate" -l samplerate -d 'Sample rate in Hz' -r
+complete -c tio -n "__fish_tio_using_subcommand simulate" -l frequency -d 'Initial sine wave frequency in Hz' -r
+complete -c tio -n "__fish_tio_using_subcommand simulate" -l amplitude -d 'Initial sine wave amplitude in V' -r
+complete -c tio -n "__fish_tio_using_subcommand simulate" -l noise -d 'Initial white noise level in V/sqrt(Hz)' -r
+complete -c tio -n "__fish_tio_using_subcommand simulate" -l segment-seconds -d 'Segment duration in seconds' -r
+complete -c tio -n "__fish_tio_using_subcommand simulate" -l port -d 'UDP port to listen on' -r
+complete -c tio -n "__fish_tio_using_subcommand simulate" -s h -l help -d 'Print help'
+complete -c tio -n "__fish_tio_using_subcommand simulate" -s V -l version -d 'Print version'
 complete -c tio -n "__fish_tio_using_subcommand test" -l samplerate -d 'Sample rate in Hz' -r
 complete -c tio -n "__fish_tio_using_subcommand test" -l frequency -d 'Initial sine wave frequency in Hz' -r
 complete -c tio -n "__fish_tio_using_subcommand test" -l amplitude -d 'Initial sine wave amplitude in V' -r
@@ -170,4 +189,6 @@ complete -c tio -n "__fish_tio_using_subcommand test" -l segment-seconds -d 'Seg
 complete -c tio -n "__fish_tio_using_subcommand test" -l port -d 'UDP port to listen on' -r
 complete -c tio -n "__fish_tio_using_subcommand test" -s h -l help -d 'Print help'
 complete -c tio -n "__fish_tio_using_subcommand test" -s V -l version -d 'Print version'
-complete -c tio -n "__fish_tio_using_subcommand completions" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c tio -n "__fish_tio_using_subcommand completions" -s s -l static -d 'Generate static instead of dynamic completions'
+complete -c tio -n "__fish_tio_using_subcommand completions" -s h -l help -d 'Print help'
+complete -c tio -n "__fish_tio_using_subcommand completions" -s V -l version -d 'Print version'

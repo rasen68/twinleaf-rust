@@ -28,9 +28,11 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand dump 'Dump raw packets from a device'
             cand log 'Log samples to a file'
             cand rpc 'Execute a device RPC'
+            cand capture 'Trigger and read a capture RPC'
             cand upgrade 'Upgrade device firmware'
             cand proxy 'Multiplex a sensor over TCP'
-            cand test 'Run a simulated sine wave Twinleaf device over UDP'
+            cand simulate 'Run a simulated sine wave Twinleaf device over UDP'
+            cand test '(deprecated, use `simulate`) Run a simulated sine wave Twinleaf device over UDP'
             cand completions 'Generate shell completions for tio'
         }
         &'tio;list'= {
@@ -50,6 +52,8 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand --depth 'Routing depth limit (default: unlimited)'
             cand -h 'Print help'
             cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
         }
         &'tio;health'= {
             cand -r 'Sensor root address'
@@ -60,7 +64,7 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand --ppm-warn 'Warning threshold in parts per million (>= 0)'
             cand --ppm-err 'Error threshold in parts per million (>= 0)'
             cand --streams 'Comma-separated stream IDs to monitor (e.g., 0,1,5)'
-            cand --fps 'UI refresh rate for heartbeat animation and stale detection (1–60)'
+            cand --fps 'UI refresh rate for heartbeat animation and stale detection (1-60)'
             cand --stale-ms 'Mark streams as stale after this many milliseconds without data (>= 1)'
             cand -n 'Maximum number of events to keep in history (>= 1)'
             cand --event-log-size 'Maximum number of events to keep in history (>= 1)'
@@ -80,6 +84,7 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand -s 'Sensor path in the sensor tree'
             cand --sensor 'Sensor path in the sensor tree'
             cand --depth 'Routing depth limit (default: unlimited)'
+            cand --duration 'Stop after this wall-clock duration (e.g. 30s, 5m, 2h)'
             cand -d 'Show parsed data samples'
             cand --data 'Show parsed data samples'
             cand -m 'Show metadata on boundaries'
@@ -139,8 +144,10 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand --help 'Print help'
         }
         &'tio;log;csv'= {
-            cand -s 'Sensor route in the device tree (default: /)'
+            cand -s 'Sensor route in the device tree (default: /); overridden by a route prefix in the selector'
             cand -o 'Output filename prefix'
+            cand -f 'Overwrite the output file if it already exists'
+            cand --force 'Overwrite the output file if it already exists'
             cand -h 'Print help'
             cand --help 'Print help'
         }
@@ -180,7 +187,7 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand --root 'Sensor root address'
             cand -s 'Sensor path in the sensor tree'
             cand --sensor 'Sensor path in the sensor tree'
-            cand --name-only 'Output only names, not permissions or types'
+            cand --name-only 'List names without permissions and types (mostly for internal completions use)'
             cand -h 'Print help'
             cand --help 'Print help'
         }
@@ -193,23 +200,34 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'tio;capture'= {
+            cand -r 'Sensor root address'
+            cand --root 'Sensor root address'
+            cand -s 'Sensor path in the sensor tree'
+            cand --sensor 'Sensor path in the sensor tree'
+            cand --timeout 'Maximum time to wait for capture data'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
         &'tio;upgrade'= {
             cand -r 'Sensor root address'
             cand --root 'Sensor root address'
             cand -s 'Sensor path in the sensor tree'
             cand --sensor 'Sensor path in the sensor tree'
+            cand --downgrade 'List all published firmware for the connected sensor and interactively pick one to install (allows installing an older release)'
             cand -y 'Skip confirmation prompt'
             cand --yes 'Skip confirmation prompt'
             cand -h 'Print help'
             cand --help 'Print help'
         }
         &'tio;proxy'= {
+            cand --mount 'Mount a sensor at a route prefix to multiplex multiple devices (repeatable)'
             cand -p 'TCP port to listen on for clients'
             cand --port 'TCP port to listen on for clients'
             cand -s 'Sensor subtree to look at'
             cand --subtree 'Sensor subtree to look at'
-            cand -t 'Timestamp format'
-            cand --timestamp 'Timestamp format'
+            cand -t 'Deprecated; timestamps are now emitted by the logger (set RUST_LOG to control verbosity)'
+            cand --timestamp 'Deprecated; timestamps are now emitted by the logger (set RUST_LOG to control verbosity)'
             cand -T 'Time limit for sensor reconnection attempts (seconds)'
             cand --timeout 'Time limit for sensor reconnection attempts (seconds)'
             cand -k 'Kick off slow clients instead of dropping traffic'
@@ -242,6 +260,18 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'tio;simulate'= {
+            cand --samplerate 'Sample rate in Hz'
+            cand --frequency 'Initial sine wave frequency in Hz'
+            cand --amplitude 'Initial sine wave amplitude in V'
+            cand --noise 'Initial white noise level in V/sqrt(Hz)'
+            cand --segment-seconds 'Segment duration in seconds'
+            cand --port 'UDP port to listen on'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
+        }
         &'tio;test'= {
             cand --samplerate 'Sample rate in Hz'
             cand --frequency 'Initial sine wave frequency in Hz'
@@ -255,8 +285,12 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand --version 'Print version'
         }
         &'tio;completions'= {
-            cand -h 'Print help (see more with ''--help'')'
-            cand --help 'Print help (see more with ''--help'')'
+            cand -s 'Generate static instead of dynamic completions'
+            cand --static 'Generate static instead of dynamic completions'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
         }
     ]
     $completions[$command]

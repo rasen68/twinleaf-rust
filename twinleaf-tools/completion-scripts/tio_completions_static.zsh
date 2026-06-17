@@ -48,6 +48,8 @@ _arguments "${_arguments_options[@]}" : \
 '--depth=[Routing depth limit (default\: unlimited)]:DEPTH:_default' \
 '-h[Print help]' \
 '--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
 && ret=0
 ;;
 (health)
@@ -60,7 +62,7 @@ _arguments "${_arguments_options[@]}" : \
 '--ppm-warn=[Warning threshold in parts per million (>= 0)]:PPM:_default' \
 '--ppm-err=[Error threshold in parts per million (>= 0)]:PPM:_default' \
 '*--streams=[Comma-separated stream IDs to monitor (e.g., 0,1,5)]:IDS:_default' \
-'--fps=[UI refresh rate for heartbeat animation and stale detection (1–60)]:FPS:_default' \
+'--fps=[UI refresh rate for heartbeat animation and stale detection (1-60)]:FPS:_default' \
 '--stale-ms=[Mark streams as stale after this many milliseconds without data (>= 1)]:MS:_default' \
 '-n+[Maximum number of events to keep in history (>= 1)]:N:_default' \
 '--event-log-size=[Maximum number of events to keep in history (>= 1)]:N:_default' \
@@ -82,6 +84,7 @@ _arguments "${_arguments_options[@]}" : \
 '-s+[Sensor path in the sensor tree]:ROUTE:_default' \
 '--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \
 '--depth=[Routing depth limit (default\: unlimited)]:DEPTH:_default' \
+'--duration=[Stop after this wall-clock duration (e.g. 30s, 5m, 2h)]:DURATION:_default' \
 '-d[Show parsed data samples]' \
 '--data[Show parsed data samples]' \
 '-m[Show metadata on boundaries]' \
@@ -170,11 +173,13 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (csv)
 _arguments "${_arguments_options[@]}" : \
-'-s+[Sensor route in the device tree (default\: /)]:SENSOR:_default' \
+'-s+[Sensor route in the device tree (default\: /); overridden by a route prefix in the selector]:SENSOR:_default' \
 '-o+[Output filename prefix]:OUTPUT:_default' \
+'-f[Overwrite the output file if it already exists]' \
+'--force[Overwrite the output file if it already exists]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::args -- Stream ID/name and input .tio files (order-independent):_files' \
+'*::args -- Stream selector (name or id, optionally with a route prefix like /0/field) and input .tio files (order-independent):_files' \
 && ret=0
 ;;
 (hdf)
@@ -182,12 +187,12 @@ _arguments "${_arguments_options[@]}" : \
 '-o+[Output file path (defaults to input filename with .h5 extension)]:OUTPUT:_default' \
 '-g+[Filter streams using a glob pattern (e.g. "/*/vector")]:FILTER:_default' \
 '--glob=[Filter streams using a glob pattern (e.g. "/*/vector")]:FILTER:_default' \
-'-l+[How to organize runs in the output (none=flat, stream=per-stream, device=per-device, global=all-shared)]:SPLIT_LEVEL:((none\:"No run splitting - flat structure\: /{route}/{stream}/{datasets}"
-stream\:"Each stream has independent run counter"
+'-l+[How to organize runs in the output (none=flat, stream=per-stream, device=per-device, global=all-shared)]:SPLIT_LEVEL:((none\:"No run splitting - one table per stream\: /{route}/{stream}"
+stream\:"Each stream has independent run counter (separate table per run)"
 device\:"All streams on a device share run counter"
 global\:"All streams globally share run counter"))' \
-'--split=[How to organize runs in the output (none=flat, stream=per-stream, device=per-device, global=all-shared)]:SPLIT_LEVEL:((none\:"No run splitting - flat structure\: /{route}/{stream}/{datasets}"
-stream\:"Each stream has independent run counter"
+'--split=[How to organize runs in the output (none=flat, stream=per-stream, device=per-device, global=all-shared)]:SPLIT_LEVEL:((none\:"No run splitting - one table per stream\: /{route}/{stream}"
+stream\:"Each stream has independent run counter (separate table per run)"
 device\:"All streams on a device share run counter"
 global\:"All streams globally share run counter"))' \
 '-p+[When to detect discontinuities (continuous=any gap, monotonic=only time backward)]:SPLIT_POLICY:((continuous\:"Split on any discontinuity (gaps, rate changes, etc.)"
@@ -239,7 +244,7 @@ _arguments "${_arguments_options[@]}" : \
 '--root=[Sensor root address]:ROOT:_urls' \
 '-s+[Sensor path in the sensor tree]:ROUTE:_default' \
 '--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \
-'--name-only[Output only names, not permissions or types]' \
+'--name-only[List names without permissions and types (mostly for internal completions use)]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -260,27 +265,41 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(capture)
+_arguments "${_arguments_options[@]}" : \
+'-r+[Sensor root address]:ROOT:_urls' \
+'--root=[Sensor root address]:ROOT:_urls' \
+'-s+[Sensor path in the sensor tree]:ROUTE:_default' \
+'--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \
+'--timeout=[Maximum time to wait for capture data]:TIMEOUT:_default' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::rpc_name -- Capture RPC name to execute:' \
+&& ret=0
+;;
 (upgrade)
 _arguments "${_arguments_options[@]}" : \
 '-r+[Sensor root address]:ROOT:_urls' \
 '--root=[Sensor root address]:ROOT:_urls' \
 '-s+[Sensor path in the sensor tree]:ROUTE:_default' \
 '--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \
+'()--downgrade[List all published firmware for the connected sensor and interactively pick one to install (allows installing an older release)]' \
 '-y[Skip confirmation prompt]' \
 '--yes[Skip confirmation prompt]' \
 '-h[Print help]' \
 '--help[Print help]' \
-':firmware_path -- Input firmware image path:_files' \
+'::firmware_path -- Input firmware image path. Omit to download the latest published firmware for the connected sensor'\''s name and hardware revision:_files' \
 && ret=0
 ;;
 (proxy)
 _arguments "${_arguments_options[@]}" : \
+'*--mount=[Mount a sensor at a route prefix to multiplex multiple devices (repeatable)]:LOCATOR=/N:_default' \
 '-p+[TCP port to listen on for clients]:PORT:_default' \
 '--port=[TCP port to listen on for clients]:PORT:_default' \
-'-s+[Sensor subtree to look at]:SUBTREE:_default' \
-'--subtree=[Sensor subtree to look at]:SUBTREE:_default' \
-'-t+[Timestamp format]:TIMESTAMP_FORMAT:_default' \
-'--timestamp=[Timestamp format]:TIMESTAMP_FORMAT:_default' \
+'(--mount)-s+[Sensor subtree to look at]:SUBTREE:_default' \
+'(--mount)--subtree=[Sensor subtree to look at]:SUBTREE:_default' \
+'-t+[Deprecated; timestamps are now emitted by the logger (set RUST_LOG to control verbosity)]:TIMESTAMP_FORMAT:_default' \
+'--timestamp=[Deprecated; timestamps are now emitted by the logger (set RUST_LOG to control verbosity)]:TIMESTAMP_FORMAT:_default' \
 '-T+[Time limit for sensor reconnection attempts (seconds)]:RECONNECT_TIMEOUT:_default' \
 '--timeout=[Time limit for sensor reconnection attempts (seconds)]:RECONNECT_TIMEOUT:_default' \
 '-k[Kick off slow clients instead of dropping traffic]' \
@@ -328,6 +347,20 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(simulate)
+_arguments "${_arguments_options[@]}" : \
+'--samplerate=[Sample rate in Hz]:SAMPLERATE:_default' \
+'--frequency=[Initial sine wave frequency in Hz]:FREQUENCY:_default' \
+'--amplitude=[Initial sine wave amplitude in V]:AMPLITUDE:_default' \
+'--noise=[Initial white noise level in V/sqrt(Hz)]:NOISE:_default' \
+'--segment-seconds=[Segment duration in seconds]:SEGMENT_SECONDS:_default' \
+'--port=[UDP port to listen on]:PORT:_default' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
 (test)
 _arguments "${_arguments_options[@]}" : \
 '--samplerate=[Sample rate in Hz]:SAMPLERATE:_default' \
@@ -344,9 +377,13 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (completions)
 _arguments "${_arguments_options[@]}" : \
-'-h[Print help (see more with '\''--help'\'')]' \
-'--help[Print help (see more with '\''--help'\'')]' \
-':shell:(bash elvish fish powershell zsh)' \
+'-s[Generate static instead of dynamic completions]' \
+'--static[Generate static instead of dynamic completions]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+':shell -- Shell to output completions for:(bash elvish fish powershell zsh)' \
 && ret=0
 ;;
         esac
@@ -363,12 +400,19 @@ _tio_commands() {
 'dump:Dump raw packets from a device' \
 'log:Log samples to a file' \
 'rpc:Execute a device RPC' \
+'capture:Trigger and read a capture RPC' \
 'upgrade:Upgrade device firmware' \
 'proxy:Multiplex a sensor over TCP' \
-'test:Run a simulated sine wave Twinleaf device over UDP' \
+'simulate:Run a simulated sine wave Twinleaf device over UDP' \
+'test:(deprecated, use \`simulate\`) Run a simulated sine wave Twinleaf device over UDP' \
 'completions:Generate shell completions for tio' \
     )
     _describe -t commands 'tio commands' commands "$@"
+}
+(( $+functions[_tio__subcmd__capture_commands] )) ||
+_tio__subcmd__capture_commands() {
+    local commands; commands=()
+    _describe -t commands 'tio capture commands' commands "$@"
 }
 (( $+functions[_tio__subcmd__completions_commands] )) ||
 _tio__subcmd__completions_commands() {
@@ -467,6 +511,11 @@ _tio__subcmd__rpc__subcmd__dump_commands() {
 _tio__subcmd__rpc__subcmd__list_commands() {
     local commands; commands=()
     _describe -t commands 'tio rpc list commands' commands "$@"
+}
+(( $+functions[_tio__subcmd__simulate_commands] )) ||
+_tio__subcmd__simulate_commands() {
+    local commands; commands=()
+    _describe -t commands 'tio simulate commands' commands "$@"
 }
 (( $+functions[_tio__subcmd__test_commands] )) ||
 _tio__subcmd__test_commands() {
