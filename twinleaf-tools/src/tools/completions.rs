@@ -228,13 +228,13 @@ _tio__subcmd__rpc_commands() {
 (( $+functions[_tio__subcmd__rpc_names] )) ||
 _tio__subcmd__rpc_names() {
     local commands
-	IFS=$'\\n' commands=($(tio rpc list --name-only))
+	IFS=$'\\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
     _describe -t commands 'rpc names' commands \"$@\"
 }
 (( $+functions[_tio__subcmd__rpc_commands] )) ||
 _tio__subcmd__rpc_commands() {
     local commands
-	IFS=$'\\n' commands=($(tio rpc list --name-only))
+	IFS=$'\\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
 	commands=( \"${commands[@]}\"
 'list:List available RPCs on the device' \\
 'dump:Dump RPC data from the device' \\
@@ -244,7 +244,7 @@ _tio__subcmd__rpc_commands() {
 (( $+functions[_tio__subcmd__rpc_names] )) ||
 _tio__subcmd__rpc_names() {
     local commands
-	IFS=$'\\n' commands=($(tio rpc list --name-only))
+	IFS=$'\\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
     _describe -t commands 'rpc names' commands \"$@\"");
 
     print!("{}", completions);
