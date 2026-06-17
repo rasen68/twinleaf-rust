@@ -85,6 +85,10 @@ _tio() {
             tio__subcmd__rpc__subcmd__dump,[^-]*)
                 cmd="tio__subcmd__rpc__subcmd__dump__subcmd__rpcname"
                 ;;
+            tio__subcmd__capture,[^-]*)
+				cmd="tio__subcmd__capture__subcmd__rpcname"
+				;;
+
             *)
                 ;;
         esac
@@ -106,7 +110,11 @@ _tio() {
             return 0
             ;;
         tio__subcmd__capture)
-            opts="-r -s -h --root --sensor --timeout --help [RPC_NAME]"
+			local rpcs
+			rpcs="$( tio rpc list --name-only --capture-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
+			rpcs="${rpcs//\\n/ }" # replace newlines with spaces
+			rpcs="${rpcs% }"     # remove trailing whitespace
+			opts="-r -s -h --root --sensor --timeout --help $rpcs"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -666,7 +674,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc__subcmd__rpcname)
-			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug [ARG]"
+			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [ARG]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -747,7 +755,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc__subcmd__dump__subcmd__rpcname)
-            opts="-r -s -h --root --sensor --capture"
+            opts="-r -s -h --root --sensor --capture --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -766,6 +774,41 @@ _tio() {
                     return 0
                     ;;
                 -s)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+
+        tio__subcmd__capture__subcmd__rpcname)
+            opts="-r -s -h --root --sensor --timeout --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -r)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --sensor)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -s)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --timeout)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
