@@ -275,6 +275,12 @@ _arguments \"${_arguments_options[@]}\" : \\
 '--debug[Enable debug output]' \\
 ':rpc_arg -- RPC argument value:'\\");
 
+    // Remove rpc name from capture opts
+    let completions = completions.replace("
+'::rpc_name -- Capture RPC name to execute:' \\",
+    "
+':: :_tio__subcmd__capture_rpc_names' \\");
+
     // Add functions to dynamically get rpc names,
     // Replacing old completion case for "tio rpc [list/dump/[RPC_NAME]"
     let completions = completions.replace("
@@ -303,11 +309,11 @@ _tio__subcmd__rpc_commands() {
     )
     _describe -t commands 'rpc names / tio rpc commands' commands \"$@\"
 }
-(( $+functions[_tio__subcmd__rpc_names] )) ||
-_tio__subcmd__rpc_names() {
+(( $+functions[_tio__subcmd__capture_rpc_names] )) ||
+_tio__subcmd__capture_rpc_names() {
     local commands
-	IFS=$'\\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
-    _describe -t commands 'rpc names' commands \"$@\"");
+	IFS=$'\\n' commands=($(tio rpc list --name-only --capture-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+    _describe -t commands 'capture rpc names' commands \"$@\"");
 
     print!("{}", completions);
     Ok(())

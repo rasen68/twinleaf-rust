@@ -289,7 +289,7 @@ _arguments "${_arguments_options[@]}" : \
 '--timeout=[Maximum time to wait for capture data]:TIMEOUT:_default' \
 '-h[Print help]' \
 '--help[Print help]' \
-'::rpc_name -- Capture RPC name to execute:' \
+':: :_tio__subcmd__capture_rpc_names' \
 && ret=0
 ;;
 (upgrade)
@@ -512,24 +512,24 @@ _tio__subcmd__proxy__subcmd__nmea_commands() {
 (( $+functions[_tio__subcmd__rpc_names] )) ||
 _tio__subcmd__rpc_names() {
     local commands
-	IFS=$'\n' commands=($(tio rpc list --name-only))
+	IFS=$'\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
     _describe -t commands 'rpc names' commands "$@"
 }
 (( $+functions[_tio__subcmd__rpc_commands] )) ||
 _tio__subcmd__rpc_commands() {
     local commands
-	IFS=$'\n' commands=($(tio rpc list --name-only))
+	IFS=$'\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
 	commands=( "${commands[@]}"
 'list:List available RPCs on the device' \
 'dump:Dump RPC data from the device' \
     )
     _describe -t commands 'rpc names / tio rpc commands' commands "$@"
 }
-(( $+functions[_tio__subcmd__rpc_names] )) ||
-_tio__subcmd__rpc_names() {
+(( $+functions[_tio__subcmd__capture_rpc_names] )) ||
+_tio__subcmd__capture_rpc_names() {
     local commands
-	IFS=$'\n' commands=($(tio rpc list --name-only))
-    _describe -t commands 'rpc names' commands "$@"
+	IFS=$'\n' commands=($(tio rpc list --name-only --capture-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+    _describe -t commands 'capture rpc names' commands "$@"
 }
 (( $+functions[_tio__subcmd__rpc__subcmd__dump_commands] )) ||
 _tio__subcmd__rpc__subcmd__dump_commands() {
