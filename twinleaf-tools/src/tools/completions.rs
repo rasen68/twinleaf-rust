@@ -256,7 +256,7 @@ fn generate_zsh_dynamic() -> eyre::Result<()> {
 ':rpc_name -- RPC name to dump:' \\",
 
     "
-':: :_tio__subcmd__rpc_names' \\
+\":: :_tio__subcmd__rpc_names\" \\
 && ret=0
 ;;
 (rpc)
@@ -279,7 +279,7 @@ _arguments \"${_arguments_options[@]}\" : \\
     let completions = completions.replace("
 '::rpc_name -- Capture RPC name to execute:' \\",
     "
-':: :_tio__subcmd__capture_rpc_names' \\");
+\":: :_tio__subcmd__capture_rpc_names\" \\");
 
     // Add functions to dynamically get rpc names,
     // Replacing old completion case for "tio rpc [list/dump/[RPC_NAME]"
