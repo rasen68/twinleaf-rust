@@ -227,6 +227,11 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 }
 
 fn generate_zsh_dynamic() -> eyre::Result<()> {
+    // NOTE: there is a known bug where completions breaks on rpc list/dump with a sensor/route
+    // option, e.g. "tio rpc list -s /0 <TAB>".
+    // This is because the rpc subcommand steals the sensor/route option and adds on
+    // all its other options as well, which zsh doesn't like and causes a buggy output
+    // Only fix for this is likely changing the default clap completion structure more
     let completions = include_str!("../../completion-scripts/tio_completions_static.zsh");
 
     // First remove rpc name and arg from rpc opts
