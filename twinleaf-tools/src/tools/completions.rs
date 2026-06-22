@@ -227,11 +227,12 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 }
 
 fn generate_zsh_dynamic() -> eyre::Result<()> {
-    // NOTE: there is a known bug where completions breaks on rpc list/dump with a sensor/route
-    // option, e.g. "tio rpc list -s /0 <TAB>".
+    // NOTE: there is a known bug where completions break on rpc list/dump with
+    // a sensor/route option, e.g. "tio rpc list -s /0 <TAB>".
     // This is because the rpc subcommand steals the sensor/route option and adds on
     // all its other options as well, which zsh doesn't like and causes a buggy output
-    // Only fix for this is likely changing the default clap completion structure more
+    // This does not seem to be fixable because we want "tio rpc" to accept these options
+    // before the rpc name, which also means it must accept them before list/dump
     let completions = include_str!("../../completion-scripts/tio_completions_static.zsh");
 
     // First remove rpc name and arg from rpc opts
@@ -258,7 +259,7 @@ fn generate_zsh_dynamic() -> eyre::Result<()> {
     let completions = completions.replace("
 (rpc)
 _arguments",
-    
+
     "
 (rpc)
 local _line=( \"${line[@]}\" )
@@ -270,7 +271,7 @@ _arguments");
     let completions = completions.replace("\":: :_tio__subcmd__rpc_commands\" \\",
     "\":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\");
 
-    // Remove rpc name from dump opts, 
+    // Remove rpc name from dump opts,
     // And use it as a hook to add case for last word being just "rpc"
     // If it is, we are at "tio rpc" and want to complete rpc names
     // We do a similar slicing thing to above using our saved _line
@@ -296,7 +297,7 @@ _arguments \"${_arguments_options[@]}\" : \\
 '--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
 '-d[Enable debug output]' \\
 '--debug[Enable debug output]' \\
-':rpc_arg -- RPC argument value:'\\");
+':rpc_arg -- RPC argument value:' \\");
 
     // Replace capture rpc name with dynamic completion, and pass in line
     let completions = completions.replace("'::rpc_name -- Capture RPC name to execute:' \\",

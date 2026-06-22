@@ -275,7 +275,7 @@ _arguments "${_arguments_options[@]}" : \
 '--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \
 '-d[Enable debug output]' \
 '--debug[Enable debug output]' \
-':rpc_arg -- RPC argument value:'\
+':rpc_arg -- RPC argument value:' \
 && ret=0
 ;;
         esac
