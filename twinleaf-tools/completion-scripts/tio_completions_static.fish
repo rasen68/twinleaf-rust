@@ -137,7 +137,8 @@ complete -c tio -n "__fish_tio_using_subcommand rpc; and not __fish_seen_subcomm
 complete -c tio -n "__fish_tio_using_subcommand rpc; and not __fish_seen_subcommand_from list dump" -a "dump" -d 'Dump RPC data from the device'
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -s r -l root -d 'Sensor root address' -r -f
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -s s -l sensor -d 'Sensor path in the sensor tree' -r
-complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -l name-only -d 'List names without permissions and types (mostly for internal completions use)'
+complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -l name-only -d 'List names without permissions and types'
+complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -l capture-only -d 'List only rpcs that are `tio capture`able'
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from list" -s h -l help -d 'Print help'
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from dump" -s r -l root -d 'Sensor root address' -r -f
 complete -c tio -n "__fish_tio_using_subcommand rpc; and __fish_seen_subcommand_from dump" -s s -l sensor -d 'Sensor path in the sensor tree' -r

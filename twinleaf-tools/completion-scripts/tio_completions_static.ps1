@@ -203,7 +203,8 @@ Register-ArgumentCompleter -Native -CommandName 'tio' -ScriptBlock {
             [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'Sensor root address')
             [CompletionResult]::new('-s', '-s', [CompletionResultType]::ParameterName, 'Sensor path in the sensor tree')
             [CompletionResult]::new('--sensor', '--sensor', [CompletionResultType]::ParameterName, 'Sensor path in the sensor tree')
-            [CompletionResult]::new('--name-only', '--name-only', [CompletionResultType]::ParameterName, 'List names without permissions and types (mostly for internal completions use)')
+            [CompletionResult]::new('--name-only', '--name-only', [CompletionResultType]::ParameterName, 'List names without permissions and types')
+            [CompletionResult]::new('--capture-only', '--capture-only', [CompletionResultType]::ParameterName, 'List only rpcs that are `tio capture`able')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break

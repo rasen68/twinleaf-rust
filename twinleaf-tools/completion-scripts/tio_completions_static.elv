@@ -187,7 +187,8 @@ set edit:completion:arg-completer[tio] = {|@words|
             cand --root 'Sensor root address'
             cand -s 'Sensor path in the sensor tree'
             cand --sensor 'Sensor path in the sensor tree'
-            cand --name-only 'List names without permissions and types (mostly for internal completions use)'
+            cand --name-only 'List names without permissions and types'
+            cand --capture-only 'List only rpcs that are `tio capture`able'
             cand -h 'Print help'
             cand --help 'Print help'
         }

@@ -244,7 +244,8 @@ _arguments "${_arguments_options[@]}" : \
 '--root=[Sensor root address]:ROOT:_urls' \
 '-s+[Sensor path in the sensor tree]:ROUTE:_default' \
 '--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \
-'--name-only[List names without permissions and types (mostly for internal completions use)]' \
+'--name-only[List names without permissions and types]' \
+'--capture-only[List only rpcs that are \`tio capture\`able]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0

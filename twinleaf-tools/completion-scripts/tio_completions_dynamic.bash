@@ -820,7 +820,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc__subcmd__list)
-            opts="-r -s -h --root --sensor --name-only --help"
+            opts="-r -s -h --root --sensor --name-only --capture-only --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

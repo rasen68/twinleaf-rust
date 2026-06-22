@@ -213,6 +213,7 @@ monotonic\:"Only split when time goes backward (allows gaps)"))' \
 esac
 ;;
 (rpc)
+local _line=( "${line[@]}" )
 _arguments "${_arguments_options[@]}" : \
 '-r+[Sensor root address]:ROOT:_urls' \
 '--root=[Sensor root address]:ROOT:_urls' \
@@ -226,7 +227,7 @@ _arguments "${_arguments_options[@]}" : \
 '--debug[Enable debug output]' \
 '-h[Print help]' \
 '--help[Print help]' \
-":: :_tio__subcmd__rpc_commands" \
+":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))" \
 "*::: :->rpc" \
 && ret=0
 
@@ -242,7 +243,8 @@ _arguments "${_arguments_options[@]}" : \
 '--root=[Sensor root address]:ROOT:_urls' \
 '-s+[Sensor path in the sensor tree]:ROUTE:_default' \
 '--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \
-'--name-only[List names without permissions and types (mostly for internal completions use)]' \
+'--name-only[List names without permissions and types]' \
+'--capture-only[List only rpcs that are \`tio capture\`able]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -256,7 +258,7 @@ _arguments "${_arguments_options[@]}" : \
 '--capture[Trigger a capture before dumping]' \
 '-h[Print help]' \
 '--help[Print help]' \
-':: :_tio__subcmd__rpc_names' \
+":: :_tio__subcmd__rpc_names ${_line[3,-2]} $(( ${#_line[3,-2]} + 1 ))" \
 && ret=0
 ;;
 (rpc)
@@ -289,7 +291,7 @@ _arguments "${_arguments_options[@]}" : \
 '--timeout=[Maximum time to wait for capture data]:TIMEOUT:_default' \
 '-h[Print help]' \
 '--help[Print help]' \
-':: :_tio__subcmd__capture_rpc_names' \
+":: :_tio__subcmd__capture_rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))" \
 && ret=0
 ;;
 (upgrade)
@@ -509,16 +511,46 @@ _tio__subcmd__proxy__subcmd__nmea_commands() {
     local commands; commands=()
     _describe -t commands 'tio proxy nmea commands' commands "$@"
 }
+(( $+functions[_tio__helper__list_rpcs] )) ||
+_tio__helper__list_rpcs() {
+	local opts=()
+	local next=false;
+	for item in $@; do
+		if $next; then
+			opts+=( "$item" )
+			next=false;
+		elif [[ "$item" =~ "--name-only|--capture-only|--root=.+|--sensor=.+|-s=.+|-r=.+" ]]; then
+			opts+=( "$item" )
+		elif [[ "$item" =~ "-r|-s|--root|--sensor" ]]; then
+			next=true;
+			opts+=( "$item" )
+		fi
+	done
+	IFS=$'\n' reply=($(tio rpc list $opts 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+}
 (( $+functions[_tio__subcmd__rpc_names] )) ||
 _tio__subcmd__rpc_names() {
+	# We've been passed an argument array of zsh stuff and then what we added
+	# The last element is the length of what we added, we use that to get the rest
+	# We use set -- to slice this off of $@ so that the zsh stuff can do its job
+	local len=${@[-1]}
+	local opts=( ${@[-$len,-2]} )
+	set -- ${@:1:-$len}
+
     local commands
-	IFS=$'\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+	_tio__helper__list_rpcs ${opts[@]} --name-only
+	commands=( "${reply[@]}" )
     _describe -t commands 'rpc names' commands "$@"
 }
 (( $+functions[_tio__subcmd__rpc_commands] )) ||
 _tio__subcmd__rpc_commands() {
-    local commands
-	IFS=$'\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+	local len=${@[-1]}
+	local opts=( ${@[-$len,-2]} )
+	set -- ${@:1:-$len}
+
+	local commands
+	_tio__helper__list_rpcs ${opts[@]} --name-only
+	commands=( "${reply[@]}" )
 	commands=( "${commands[@]}"
 'list:List available RPCs on the device' \
 'dump:Dump RPC data from the device' \
@@ -527,8 +559,13 @@ _tio__subcmd__rpc_commands() {
 }
 (( $+functions[_tio__subcmd__capture_rpc_names] )) ||
 _tio__subcmd__capture_rpc_names() {
-    local commands
-	IFS=$'\n' commands=($(tio rpc list --name-only --capture-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+	local len=${@[-1]}
+	local opts=( ${@[-$len,-2]} )
+	set -- ${@:1:-$len}
+
+	local commands
+	_tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
+	commands=( "${reply[@]}" )
     _describe -t commands 'capture rpc names' commands "$@"
 }
 (( $+functions[_tio__subcmd__rpc__subcmd__dump_commands] )) ||
