@@ -249,14 +249,32 @@ fn generate_zsh_dynamic() -> eyre::Result<()> {
 		case $line[1] in
 			(list)");
 
+    // Save line to _line, which will come in handy later
+    let completions = completions.replace("
+(rpc)
+_arguments",
+    
+    "
+(rpc)
+local _line=( \"${line[@]}\" )
+_arguments");
+
+    // Pass additional arguments to _tio__subcmd__rpc_commands
+    // We slice line from 2 (first thing after "rpc") to -2 (last completed option)
+    // We also pass the length of what we added so it can slice it off
+    let completions = completions.replace("\":: :_tio__subcmd__rpc_commands\" \\",
+    "\":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\");
+
     // Remove rpc name from dump opts, 
     // And use it as a hook to add case for last word being just "rpc"
     // If it is, we are at "tio rpc" and want to complete rpc names
+    // We do a similar slicing thing to above using our saved _line
+    // But we start from 3 to not pass the "dump"
     let completions = completions.replace("
 ':rpc_name -- RPC name to dump:' \\",
 
     "
-\":: :_tio__subcmd__rpc_names\" \\
+\":: :_tio__subcmd__rpc_names ${_line[3,-2]} $(( ${#_line[3,-2]} + 1 ))\" \\
 && ret=0
 ;;
 (rpc)
@@ -275,11 +293,9 @@ _arguments \"${_arguments_options[@]}\" : \\
 '--debug[Enable debug output]' \\
 ':rpc_arg -- RPC argument value:'\\");
 
-    // Remove rpc name from capture opts
-    let completions = completions.replace("
-'::rpc_name -- Capture RPC name to execute:' \\",
-    "
-\":: :_tio__subcmd__capture_rpc_names\" \\");
+    // Replace capture rpc name with dynamic completion, and pass in line
+    let completions = completions.replace("'::rpc_name -- Capture RPC name to execute:' \\",
+    "\":: :_tio__subcmd__capture_rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\");
 
     // Add functions to dynamically get rpc names,
     // Replacing old completion case for "tio rpc [list/dump/[RPC_NAME]"
@@ -293,16 +309,46 @@ _tio__subcmd__rpc_commands() {
     _describe -t commands 'tio rpc commands' commands \"$@\"",
 
     "
+(( $+functions[_tio__helper__list_rpcs] )) ||
+_tio__helper__list_rpcs() {
+	local opts=()
+	local next=false;
+	for item in $@; do
+		if $next; then
+			opts+=( \"$item\" )
+			next=false;
+		elif [[ \"$item\" =~ \"--name-only|--capture-only|--root=.+|--sensor=.+|-s=.+|-r=.+\" ]]; then
+			opts+=( \"$item\" )
+		elif [[ \"$item\" =~ \"-r|-s|--root|--sensor\" ]]; then
+			next=true;
+			opts+=( \"$item\" )
+		fi
+	done
+	IFS=$'\\n' reply=($(tio rpc list $opts 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+}
 (( $+functions[_tio__subcmd__rpc_names] )) ||
 _tio__subcmd__rpc_names() {
+	# We've been passed an argument array of zsh stuff and then what we added
+	# The last element is the length of what we added, we use that to get the rest
+	# We use set -- to slice this off of $@ so that the zsh stuff can do its job
+	local len=${@[-1]}
+	local opts=( ${@[-$len,-2]} )
+	set -- ${@:1:-$len}
+
     local commands
-	IFS=$'\\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+	_tio__helper__list_rpcs ${opts[@]} --name-only
+	commands=( \"${reply[@]}\" )
     _describe -t commands 'rpc names' commands \"$@\"
 }
 (( $+functions[_tio__subcmd__rpc_commands] )) ||
 _tio__subcmd__rpc_commands() {
-    local commands
-	IFS=$'\\n' commands=($(tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+	local len=${@[-1]}
+	local opts=( ${@[-$len,-2]} )
+	set -- ${@:1:-$len}
+
+	local commands
+	_tio__helper__list_rpcs ${opts[@]} --name-only
+	commands=( \"${reply[@]}\" )
 	commands=( \"${commands[@]}\"
 'list:List available RPCs on the device' \\
 'dump:Dump RPC data from the device' \\
@@ -311,8 +357,13 @@ _tio__subcmd__rpc_commands() {
 }
 (( $+functions[_tio__subcmd__capture_rpc_names] )) ||
 _tio__subcmd__capture_rpc_names() {
-    local commands
-	IFS=$'\\n' commands=($(tio rpc list --name-only --capture-only 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+	local len=${@[-1]}
+	local opts=( ${@[-$len,-2]} )
+	set -- ${@:1:-$len}
+
+	local commands
+	_tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
+	commands=( \"${reply[@]}\" )
     _describe -t commands 'capture rpc names' commands \"$@\"");
 
     print!("{}", completions);
