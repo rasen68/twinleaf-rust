@@ -519,9 +519,9 @@ _tio__helper__list_rpcs() {
 		if $next; then
 			opts+=( "$item" )
 			next=false;
-		elif [[ "$item" =~ "--name-only|--capture-only|--root=.+|--sensor=.+|-s=.+|-r=.+" ]]; then
+		elif [[ "$item" =~ "^(--name-only|--capture-only|--root=.+|--sensor=.+|-s=.+|-r=.+)$" ]]; then
 			opts+=( "$item" )
-		elif [[ "$item" =~ "-r|-s|--root|--sensor" ]]; then
+		elif [[ "$item" =~ "^(-r|-s|--root|--sensor)$" ]]; then
 			next=true;
 			opts+=( "$item" )
 		fi

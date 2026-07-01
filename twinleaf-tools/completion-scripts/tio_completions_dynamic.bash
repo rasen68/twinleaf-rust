@@ -112,7 +112,7 @@ _tio() {
         tio__subcmd__capture)
 			local rpcs
 			rpcs="$( tio rpc list --name-only --capture-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
-			rpcs="${rpcs//\\n/ }" # replace newlines with spaces
+			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
 			opts="-r -s -h --root --sensor --timeout --help $rpcs"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -626,7 +626,7 @@ _tio() {
         tio__subcmd__rpc)
 			local rpcs
 			rpcs="$( tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
-			rpcs="${rpcs//\\n/ }" # replace newlines with spaces
+			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
 			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $rpcs"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
@@ -723,7 +723,7 @@ _tio() {
         tio__subcmd__rpc__subcmd__dump)
 			local rpcs
 			rpcs="$( tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
-			rpcs="${rpcs//\\n/ }" # replace newlines with spaces
+			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
             opts="-r -s -h --root --sensor --capture --help $rpcs"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
