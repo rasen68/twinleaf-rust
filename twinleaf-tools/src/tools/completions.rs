@@ -19,8 +19,8 @@ impl Completions {
     }
 
     pub fn replace(&mut self, pattern: &str, replacement: &str) -> eyre::Result<&mut Self> {
-        eyre::ensure!(self.completions.contains(pattern), "pattern not found in completions");
-        eyre::ensure!(self.completions.matches(pattern).count() == 1, "pattern found multiple times in completions");
+        eyre::ensure!(self.completions.contains(pattern), "pattern {} not found in completions", pattern);
+        eyre::ensure!(self.completions.matches(pattern).count() == 1, "pattern {} found multiple times in completions", pattern);
         self.completions = self.completions.replace(pattern, replacement);
         Ok(self)
     }
