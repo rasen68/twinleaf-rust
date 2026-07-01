@@ -9,12 +9,34 @@ pub fn run_completions(completions_cli: CompletionsCli) -> eyre::Result<()> {
     }
 }
 
+struct Completions {
+    completions: String,
+}
+
+impl Completions {
+    pub fn new(completions: String) -> Self {
+        Self { completions }
+    }
+
+    pub fn replace(&mut self, pattern: &str, replacement: &str) -> eyre::Result<&mut Self> {
+        eyre::ensure!(self.completions.contains(pattern), "pattern not found in completions");
+        eyre::ensure!(self.completions.matches(pattern).count() == 1, "pattern found multiple times in completions");
+        self.completions = self.completions.replace(pattern, replacement);
+        Ok(self)
+    }
+
+    pub fn print(&self) {
+        print!("{}", self.completions);
+    }
+}
+
 fn generate_bash_dynamic() -> eyre::Result<()> {
-    let completions = include_str!("../../completion-scripts/tio_completions_static.bash");
+    let static_completions = include_str!("../../completion-scripts/tio_completions_static.bash");
+    let mut completions = Completions::new(static_completions.to_string());
 
     // Add logic to treat RPC names as subcommands so we don't double-complete
     // Any word not starting with a - (other than list & dump) will be treated as an RPC
-    let completions = completions.replace("
+    completions.replace("
             tio__subcmd__rpc,list)
                 cmd=\"tio__subcmd__rpc__subcmd__list\"
                 ;;
@@ -33,11 +55,11 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 				cmd=\"tio__subcmd__capture__subcmd__rpcname\"
 				;;
 
-    ");
+    ")?;
 
 
     // Read dynamic RPC completions into options list
-    let completions = completions.replace("
+    completions.replace("
         tio__subcmd__rpc)
             opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [RPC_NAME] [ARG] list dump\"
     ",
@@ -48,13 +70,15 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 			rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
 			rpcs=\"${rpcs% }\"     # remove trailing whitespace
 			opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $rpcs\"
-    ");
+    ")?;
+    // Note: I personally like literally showing [RPC_LIST_FAILED] as an option to make it
+    // clear what went wrong, but you could also just echo nothing since there is nothing to complete
 
     // Add rpcname as subcmd to suggest an arg instead of more rpc names
     // We do this by hooking on dump subcmd and appending in front of it
     // TODO: We could try to copy this from earlier in the string
     // Which would make this more readable and maintainable, but that sounds hard
-    let completions = completions.replace("
+    completions.replace("
         tio__subcmd__rpc__subcmd__dump)
     ",
     "
@@ -106,12 +130,12 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
             ;;
 
         tio__subcmd__rpc__subcmd__dump)
-    ");
+    ")?;
 
 
     // Add dynamic completions to rpc dump
     // TODO: filter to only rpcs that are dumpable
-    let completions = completions.replace("
+    completions.replace("
         tio__subcmd__rpc__subcmd__dump)
             opts=\"-r -s -h --root --sensor --capture --help <RPC_NAME>\"
     ",
@@ -122,11 +146,11 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 			rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
 			rpcs=\"${rpcs% }\"     # remove trailing whitespace
             opts=\"-r -s -h --root --sensor --capture --help $rpcs\"
-    ");
+    ")?;
 
     // Add rpcname as subcmd to dump and capture
     // It doesn't really matter where these go so we'll put them before rpc list
-    let completions = completions.replace("
+    completions.replace("
         tio__subcmd__rpc__subcmd__list)
     ",
     "
@@ -196,10 +220,10 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
             return 0
             ;;
         tio__subcmd__rpc__subcmd__list)
-    ");
+    ")?;
 
     // Add dynamic completions to tio capture
-    let completions = completions.replace("
+    completions.replace("
         tio__subcmd__capture)
             opts=\"-r -s -h --root --sensor --timeout --help [RPC_NAME]\"
     ",
@@ -210,9 +234,9 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 			rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
 			rpcs=\"${rpcs% }\"     # remove trailing whitespace
 			opts=\"-r -s -h --root --sensor --timeout --help $rpcs\"
-    ");
+    ")?;
 
-    print!("{}", completions);
+    completions.print();
     Ok(())
 }
 
@@ -223,15 +247,16 @@ fn generate_zsh_dynamic() -> eyre::Result<()> {
     // all its other options as well, which zsh doesn't like and causes a buggy output
     // This does not seem to be fixable because we want "tio rpc" to accept these options
     // before the rpc name, which also means it must accept them before list/dump
-    let completions = include_str!("../../completion-scripts/tio_completions_static.zsh");
+    let static_completions = include_str!("../../completion-scripts/tio_completions_static.zsh");
+    let mut completions = Completions::new(static_completions.to_string());
 
     // First remove rpc name and arg from rpc opts
-    let completions = completions.replace("
+    completions.replace("
 '::rpc_name -- RPC name to execute:' \\
-'::rpc_arg -- RPC argument value:' \\", "");
+'::rpc_arg -- RPC argument value:' \\", "")?;
 
     // Change matching logic to look at last completed word
-    let completions = completions.replace("
+    completions.replace("
         words=($line[3] \"${words[@]}\")
         (( CURRENT += 1 ))
         curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[3]:\"
@@ -243,30 +268,30 @@ fn generate_zsh_dynamic() -> eyre::Result<()> {
 		(( CURRENT += 1 ))
 		curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[1]:\"
 		case $line[1] in
-			(list)");
+			(list)")?;
 
     // Save line to _line, which will come in handy later
-    let completions = completions.replace("
+    completions.replace("
 (rpc)
 _arguments",
 
     "
 (rpc)
 local _line=( \"${line[@]}\" )
-_arguments");
+_arguments")?;
 
     // Pass additional arguments to _tio__subcmd__rpc_commands
     // We slice line from 2 (first thing after "rpc") to -2 (last completed option)
     // We also pass the length of what we added so it can slice it off
-    let completions = completions.replace("\":: :_tio__subcmd__rpc_commands\" \\",
-    "\":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\");
+    completions.replace("\":: :_tio__subcmd__rpc_commands\" \\",
+    "\":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\")?;
 
     // Remove rpc name from dump opts,
     // And use it as a hook to add case for last word being just "rpc"
     // If it is, we are at "tio rpc" and want to complete rpc names
     // We do a similar slicing thing to above using our saved _line
     // But we start from 3 to not pass the "dump"
-    let completions = completions.replace("
+    completions.replace("
 ':rpc_name -- RPC name to dump:' \\",
 
     "
@@ -287,15 +312,15 @@ _arguments \"${_arguments_options[@]}\" : \\
 '--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
 '-d[Enable debug output]' \\
 '--debug[Enable debug output]' \\
-':rpc_arg -- RPC argument value:' \\");
+':rpc_arg -- RPC argument value:' \\")?;
 
     // Replace capture rpc name with dynamic completion, and pass in line
-    let completions = completions.replace("'::rpc_name -- Capture RPC name to execute:' \\",
-    "\":: :_tio__subcmd__capture_rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\");
+    completions.replace("'::rpc_name -- Capture RPC name to execute:' \\",
+    "\":: :_tio__subcmd__capture_rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\")?;
 
     // Add functions to dynamically get rpc names,
     // Replacing old completion case for "tio rpc [list/dump/[RPC_NAME]"
-    let completions = completions.replace("
+    completions.replace("
 (( $+functions[_tio__subcmd__rpc_commands] )) ||
 _tio__subcmd__rpc_commands() {
     local commands; commands=(
@@ -360,8 +385,8 @@ _tio__subcmd__capture_rpc_names() {
 	local commands
 	_tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
 	commands=( \"${reply[@]}\" )
-    _describe -t commands 'capture rpc names' commands \"$@\"");
+    _describe -t commands 'capture rpc names' commands \"$@\"")?;
 
-    print!("{}", completions);
+    completions.print();
     Ok(())
 }
