@@ -212,16 +212,6 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 			opts=\"-r -s -h --root --sensor --timeout --help $rpcs\"
     ");
 
-    // Add rpcname as subcmd to capture so we only suggest one rpc name
-    // We hook on completions subcmd because that comes right after capture
-    let completions = completions.replace("
-        tio__subcmd__completions)
-    ",
-    "
-        tio__subcmd__completions)
-    ");
-
-
     print!("{}", completions);
     Ok(())
 }
