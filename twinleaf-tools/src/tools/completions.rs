@@ -59,17 +59,15 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 
 
     // Read dynamic RPC completions into options list
+    // The helper function checks whether we are completion an option
+    // or an rpc name, and only appends rpcs in the latter case
     completions.replace("
         tio__subcmd__rpc)
             opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [RPC_NAME] [ARG] list dump\"
     ",
     "
         tio__subcmd__rpc)
-			local rpcs
-			rpcs=\"$(_tio__helper__list_rpcs --name-only)\"
-			rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
-			rpcs=\"${rpcs% }\"     # remove trailing whitespace
-			opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $rpcs\"
+			opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $(_tio__helper__append_rpcs --name-only)\"
     ")?;
     // Note: I personally like literally showing [RPC_LIST_FAILED] as an option to make it
     // clear what went wrong, but you could also just echo nothing since there is nothing to complete
@@ -134,18 +132,13 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 
 
     // Add dynamic completions to rpc dump
-    // TODO: filter to only rpcs that are dumpable
     completions.replace("
         tio__subcmd__rpc__subcmd__dump)
             opts=\"-r -s -h --root --sensor --capture --help <RPC_NAME>\"
     ",
     "
         tio__subcmd__rpc__subcmd__dump)
-			local rpcs
-			rpcs=\"$(_tio__helper__list_rpcs --name-only)\"
-			rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
-			rpcs=\"${rpcs% }\"     # remove trailing whitespace
-            opts=\"-r -s -h --root --sensor --capture --help $rpcs\"
+            opts=\"-r -s -h --root --sensor --capture --help $(_tio__helper__append_rpcs --name-only)\"
     ")?;
 
     // Add rpcname as subcmd to dump and capture
@@ -229,14 +222,10 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     ",
     "
         tio__subcmd__capture)
-			local rpcs
-			rpcs=\"$(_tio__helper__list_rpcs --name-only --capture-only)\"
-			rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
-			rpcs=\"${rpcs% }\"     # remove trailing whitespace
-			opts=\"-r -s -h --root --sensor --timeout --help $rpcs\"
+			opts=\"-r -s -h --root --sensor --timeout --help $(_tio__helper__append_rpcs --name-only --capture-only)\"
     ")?;
 
-    // Helper that forwards -r/-s/--root/--sensor from COMP_WORDS into tio rpc list
+    // Helpers: gate RPC listing to positional completions, and forward -r/-s/--root/--sensor
     completions.replace("
 if [[ \"${BASH_VERSINFO[0]}\" -eq 4 && \"${BASH_VERSINFO[1]}\" -ge 4 || \"${BASH_VERSINFO[0]}\" -gt 4 ]]; then
     complete -F _tio -o nosort -o bashdefault -o default tio
@@ -245,6 +234,22 @@ else
 fi
 ",
     "
+_tio__helper__append_rpcs() {
+	# Only fetch when completing a positional (RPC name), not a flag/value
+	if [[ ${cur} == -* ]]; then
+		return
+	fi
+	case \"${prev}\" in
+		-r|--root|-s|--sensor|-t|--req-type|-T|--rep-type|--timeout)
+			return
+			;;
+	esac
+	local rpcs
+	rpcs=\"$(_tio__helper__list_rpcs \"$@\")\"
+	rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
+	rpcs=\"${rpcs% }\"     # remove trailing whitespace
+	echo \"$rpcs\"
+}
 _tio__helper__list_rpcs() {
 	local opts=()
 	local next=false
@@ -261,10 +266,6 @@ _tio__helper__list_rpcs() {
 			opts+=( \"$item\" )
 		fi
 	done
-	# Drop a trailing flag whose value is the word currently being completed
-	if $next && (( ${#opts[@]} > 0 )); then
-		opts=( \"${opts[@]:0:${#opts[@]}-1}\" )
-	fi
 	opts+=( \"$@\" )
 	tio rpc list \"${opts[@]}\" 2>/dev/null || echo '[RPC_LIST_FAILED]'
 }

@@ -110,11 +110,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__capture)
-			local rpcs
-			rpcs="$(_tio__helper__list_rpcs --name-only --capture-only)"
-			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
-			rpcs="${rpcs% }"     # remove trailing whitespace
-			opts="-r -s -h --root --sensor --timeout --help $rpcs"
+			opts="-r -s -h --root --sensor --timeout --help $(_tio__helper__append_rpcs --name-only --capture-only)"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -624,11 +620,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc)
-			local rpcs
-			rpcs="$(_tio__helper__list_rpcs --name-only)"
-			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
-			rpcs="${rpcs% }"     # remove trailing whitespace
-			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $rpcs"
+			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $(_tio__helper__append_rpcs --name-only)"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -721,11 +713,7 @@ _tio() {
             ;;
 
         tio__subcmd__rpc__subcmd__dump)
-			local rpcs
-			rpcs="$(_tio__helper__list_rpcs --name-only)"
-			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
-			rpcs="${rpcs% }"     # remove trailing whitespace
-            opts="-r -s -h --root --sensor --capture --help $rpcs"
+            opts="-r -s -h --root --sensor --capture --help $(_tio__helper__append_rpcs --name-only)"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -958,11 +946,27 @@ _tio() {
     esac
 }
 
+_tio__helper__append_rpcs() {
+	# Only fetch when completing a positional (RPC name), not a flag/value
+	if [[ ${cur} == -* ]]; then
+		return
+	fi
+	case "${prev}" in
+		-r|--root|-s|--sensor|-t|--req-type|-T|--rep-type|--timeout)
+			return
+			;;
+	esac
+	local rpcs
+	rpcs="$(_tio__helper__list_rpcs "$@")"
+	rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
+	rpcs="${rpcs% }"     # remove trailing whitespace
+	echo "$rpcs"
+}
 _tio__helper__list_rpcs() {
 	local opts=()
 	local next=false
 	local item
-	# Scan completed words only; forward -r/-s/--root/--sensor like zsh
+	# Scan completed words only; forward -r/-s/--root/--sensor
 	for item in "${COMP_WORDS[@]:0:COMP_CWORD}"; do
 		if $next; then
 			opts+=( "$item" )
@@ -974,10 +978,6 @@ _tio__helper__list_rpcs() {
 			opts+=( "$item" )
 		fi
 	done
-	# Drop a trailing flag whose value is the word currently being completed
-	if $next && (( ${#opts[@]} > 0 )); then
-		opts=( "${opts[@]:0:${#opts[@]}-1}" )
-	fi
 	opts+=( "$@" )
 	tio rpc list "${opts[@]}" 2>/dev/null || echo '[RPC_LIST_FAILED]'
 }
