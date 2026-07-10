@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This should be run after any changes to completions or CLI
 
 echo "Initial build..."
 cargo build

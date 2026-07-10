@@ -111,7 +111,7 @@ _tio() {
             ;;
         tio__subcmd__capture)
 			local rpcs
-			rpcs="$( tio rpc list --name-only --capture-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
+			rpcs="$(_tio__helper__list_rpcs --name-only --capture-only)"
 			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
 			opts="-r -s -h --root --sensor --timeout --help $rpcs"
@@ -625,7 +625,7 @@ _tio() {
             ;;
         tio__subcmd__rpc)
 			local rpcs
-			rpcs="$( tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
+			rpcs="$(_tio__helper__list_rpcs --name-only)"
 			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
 			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $rpcs"
@@ -722,7 +722,7 @@ _tio() {
 
         tio__subcmd__rpc__subcmd__dump)
 			local rpcs
-			rpcs="$( tio rpc list --name-only 2>/dev/null || echo '[RPC_LIST_FAILED]')"
+			rpcs="$(_tio__helper__list_rpcs --name-only)"
 			rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
 			rpcs="${rpcs% }"     # remove trailing whitespace
             opts="-r -s -h --root --sensor --capture --help $rpcs"
@@ -956,6 +956,30 @@ _tio() {
             return 0
             ;;
     esac
+}
+
+_tio__helper__list_rpcs() {
+	local opts=()
+	local next=false
+	local item
+	# Scan completed words only; forward -r/-s/--root/--sensor like zsh
+	for item in "${COMP_WORDS[@]:0:COMP_CWORD}"; do
+		if $next; then
+			opts+=( "$item" )
+			next=false
+		elif [[ "$item" =~ ^(--name-only|--capture-only|--root=.+|--sensor=.+|-s=.+|-r=.+)$ ]]; then
+			opts+=( "$item" )
+		elif [[ "$item" =~ ^(-r|-s|--root|--sensor)$ ]]; then
+			next=true
+			opts+=( "$item" )
+		fi
+	done
+	# Drop a trailing flag whose value is the word currently being completed
+	if $next && (( ${#opts[@]} > 0 )); then
+		opts=( "${opts[@]:0:${#opts[@]}-1}" )
+	fi
+	opts+=( "$@" )
+	tio rpc list "${opts[@]}" 2>/dev/null || echo '[RPC_LIST_FAILED]'
 }
 
 if [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -ge 4 || "${BASH_VERSINFO[0]}" -gt 4 ]]; then
