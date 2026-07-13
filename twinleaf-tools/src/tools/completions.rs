@@ -256,6 +256,9 @@ _tio__helper__list_rpcs() {
 	local item
 	# Scan completed words only; forward -r/-s/--root/--sensor
 	for item in \"${COMP_WORDS[@]:0:COMP_CWORD}\"; do
+        # Bash sometimes breaks --sensor=/0 into three tokens
+        # Skip the middle = so /0 is the next of --sensor
+		[[ \"$item\" == '=' ]] && continue;
 		if $next; then
 			opts+=( \"$item\" )
 			next=false
