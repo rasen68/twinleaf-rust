@@ -79,13 +79,13 @@ _tio() {
             tio__subcmd__rpc,list)
                 cmd="tio__subcmd__rpc__subcmd__list"
                 ;;
-            tio__subcmd__rpc,[^-]*)
+            tio__subcmd__rpc,[a-zA-Z0-9.]*)
                 cmd="tio__subcmd__rpc__subcmd__rpcname"
                 ;;
-            tio__subcmd__rpc__subcmd__dump,[^-]*)
+            tio__subcmd__rpc__subcmd__dump,[a-zA-Z0-9.]*)
                 cmd="tio__subcmd__rpc__subcmd__dump__subcmd__rpcname"
                 ;;
-            tio__subcmd__capture,[^-]*)
+            tio__subcmd__capture,[a-zA-Z0-9.]*)
 				cmd="tio__subcmd__capture__subcmd__rpcname"
 				;;
 
