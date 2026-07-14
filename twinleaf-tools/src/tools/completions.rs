@@ -34,8 +34,10 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     let static_completions = include_str!("../../completion-scripts/tio_completions_static.bash");
     let mut completions = Completions::new(static_completions.to_string());
 
-    // Add logic to treat RPC names as subcommands so we don't double-complete
-    // Any word not starting with a - (other than list & dump) will be treated as an RPC
+    // Treat RPC names as subcommands so we don't double-complete
+    // Assume RPC names are all letters, numbers, and dots
+    // Flags (which have dashes), sensor routes (which have slashes),
+    // and root urls (which probably have ://) will not count
     completions.replace("
             tio__subcmd__rpc,list)
                 cmd=\"tio__subcmd__rpc__subcmd__list\"
