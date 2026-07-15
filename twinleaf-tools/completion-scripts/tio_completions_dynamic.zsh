@@ -213,7 +213,7 @@ monotonic\:"Only split when time goes backward (allows gaps)"))' \
 esac
 ;;
 (rpc)
-local _line=( "${line[@]}" )
+if [[ "$words[2]" == -* ]]; then
 _arguments "${_arguments_options[@]}" : \
 '-r+[Sensor root address]:ROOT:_urls' \
 '--root=[Sensor root address]:ROOT:_urls' \
@@ -227,6 +227,13 @@ _arguments "${_arguments_options[@]}" : \
 '--debug[Enable debug output]' \
 '-h[Print help]' \
 '--help[Print help]' \
+":: :_tio__subcmd__rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))" \
+':rpc_arg -- RPC argument value:' \
+&& ret=0
+else
+# Save line to _line, which will come in handy later
+local _line=( "${line[@]}" )
+_arguments "${_arguments_options[@]}" : \
 ":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))" \
 "*::: :->rpc" \
 && ret=0
@@ -281,6 +288,7 @@ _arguments "${_arguments_options[@]}" : \
         esac
     ;;
 esac
+fi
 ;;
 (capture)
 _arguments "${_arguments_options[@]}" : \

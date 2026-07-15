@@ -287,19 +287,66 @@ fi
 }
 
 fn generate_zsh_dynamic() -> eyre::Result<()> {
-    // NOTE: there is a known bug where completions break on rpc list/dump with
-    // a sensor/route option, e.g. "tio rpc list -s /0 <TAB>".
-    // This is because the rpc subcommand steals the sensor/route option and adds on
-    // all its other options as well, which zsh doesn't like and causes a buggy output
-    // This does not seem to be fixable because we want "tio rpc" to accept these options
-    // before the rpc name, which also means it must accept them before list/dump
     let static_completions = include_str!("../../completion-scripts/tio_completions_static.zsh");
     let mut completions = Completions::new(static_completions.to_string());
 
-    // First remove rpc name and arg from rpc opts
-    completions.replace("
+    // Only use rpc's _arguments to append options if we already
+    // have a dash (i.e. user is typing tio rpc -...). If this is
+    // the case, we then go directly to the rpc name completer, since
+    // there cannot be a subcommand after tio rpc -s /0 for example.
+    // Otherwise, if they're typing tio rpc list/dump, we go to
+    // _tio__subcmd__rpc_commands to generate rpc names and let
+    // subcommands append their own _arguments if we get one
+    completions.replace(
+        "
+(rpc)
+_arguments \"${_arguments_options[@]}\" : \\
+'-r+[Sensor root address]:ROOT:_urls' \\
+'--root=[Sensor root address]:ROOT:_urls' \\
+'-s+[Sensor path in the sensor tree]:ROUTE:_default' \\
+'--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \\
+'-t+[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'--req-type=[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'-T+[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'-d[Enable debug output]' \\
+'--debug[Enable debug output]' \\
+'-h[Print help]' \\
+'--help[Print help]' \\
 '::rpc_name -- RPC name to execute:' \\
-'::rpc_arg -- RPC argument value:' \\", "")?;
+'::rpc_arg -- RPC argument value:' \\
+\":: :_tio__subcmd__rpc_commands\" \\
+\"*::: :->rpc\" \\
+&& ret=0
+",
+        "
+(rpc)
+if [[ \"$words[2]\" == -* ]]; then
+_arguments \"${_arguments_options[@]}\" : \\
+'-r+[Sensor root address]:ROOT:_urls' \\
+'--root=[Sensor root address]:ROOT:_urls' \\
+'-s+[Sensor path in the sensor tree]:ROUTE:_default' \\
+'--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \\
+'-t+[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'--req-type=[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'-T+[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
+'-d[Enable debug output]' \\
+'--debug[Enable debug output]' \\
+'-h[Print help]' \\
+'--help[Print help]' \\
+\":: :_tio__subcmd__rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\
+':rpc_arg -- RPC argument value:' \\
+&& ret=0
+else
+# Save line to _line, which will come in handy later
+local _line=( \"${line[@]}\" )
+_arguments \"${_arguments_options[@]}\" : \\
+\":: :_tio__subcmd__rpc_commands\" \\
+\"*::: :->rpc\" \\
+&& ret=0
+",
+    )?;
 
     // Change matching logic to look at last completed word
     completions.replace("
@@ -316,15 +363,23 @@ fn generate_zsh_dynamic() -> eyre::Result<()> {
 		case $line[1] in
 			(list)")?;
 
-    // Save line to _line, which will come in handy later
-    completions.replace("
-(rpc)
-_arguments",
-
-    "
-(rpc)
-local _line=( \"${line[@]}\" )
-_arguments")?;
+    // Close the if/else opened due to checking whether we had
+    // an option after tio rpc
+    completions.replace(
+        "
+        esac
+    ;;
+esac
+;;
+(capture)",
+        "
+        esac
+    ;;
+esac
+fi
+;;
+(capture)",
+    )?;
 
     // Pass additional arguments to _tio__subcmd__rpc_commands
     // We slice line from 2 (first thing after "rpc") to -2 (last completed option)
