@@ -94,7 +94,7 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
                 if [[ \"$i\" =~ ^[a-zA-Z0-9.]+$ ]]; then
                     cmd=\"tio__subcmd__capture__subcmd__rpcname\"
                 fi
-				;;
+                ;;
     ")?;
 
 
@@ -115,7 +115,7 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     ",
     "
         tio__subcmd__rpc__subcmd__rpcname)
-			opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [ARG]\"
+            opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [ARG]\"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W \"${opts}\" -- \"${cur}\") )
                 return 0
@@ -248,7 +248,7 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     // Replace tio capture's [RPC_NAME] (only one left)
     completions.replace(
         "[RPC_NAME]",
-		"$(_tio__helper__append_rpcs --name-only --capture-only)"
+        "$(_tio__helper__append_rpcs --name-only --capture-only)"
     )?;
 
     // Helpers: gate RPC listing to positional completions, and forward -r/-s/--root/--sensor
@@ -261,42 +261,42 @@ fi
 ",
     "
 _tio__helper__append_rpcs() {
-	# Only fetch when completing a positional (RPC name), not a flag/value
-	if [[ ${cur} == -* ]]; then
-		return
-	fi
-	case \"${prev}\" in
-		-r|--root|-s|--sensor|-t|--req-type|-T|--rep-type|--timeout)
-			return
-			;;
-	esac
-	local rpcs
-	rpcs=\"$(_tio__helper__list_rpcs \"$@\")\"
-	rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
-	rpcs=\"${rpcs% }\"     # remove trailing whitespace
-	echo \"$rpcs\"
+    # Only fetch when completing a positional (RPC name), not a flag/value
+    if [[ ${cur} == -* ]]; then
+        return
+    fi
+    case \"${prev}\" in
+        -r|--root|-s|--sensor|-t|--req-type|-T|--rep-type|--timeout)
+            return
+            ;;
+    esac
+    local rpcs
+    rpcs=\"$(_tio__helper__list_rpcs \"$@\")\"
+    rpcs=\"${rpcs//$'\\n'/ }\" # replace newlines with spaces
+    rpcs=\"${rpcs% }\"     # remove trailing whitespace
+    echo \"$rpcs\"
 }
 _tio__helper__list_rpcs() {
-	local opts=()
-	local next=false
-	local item
+    local opts=()
+    local next=false
+    local item
     # $COMP_WORDS breaks on : & = which is bad for roots and flags;
     # This function fills $words with a version that doesn't
     _get_comp_words_by_ref -n := words
-	# Scan completed words only; forward -r/-s/--root/--sensor
-	for item in \"${words[@]}\"; do
-		if $next; then
-			opts+=( \"$item\" )
-			next=false
-		elif [[ \"$item\" =~ ^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$ ]]; then
-			opts+=( \"$item\" )
-		elif [[ \"$item\" =~ ^(-r|-s|--root|--sensor)$ ]]; then
-			next=true
-			opts+=( \"$item\" )
-		fi
-	done
-	opts+=( \"$@\" )
-	tio rpc list \"${opts[@]}\" 2>/dev/null || echo '[RPC_LIST_FAILED]'
+    # Scan completed words only; forward -r/-s/--root/--sensor
+    for item in \"${words[@]}\"; do
+        if $next; then
+            opts+=( \"$item\" )
+            next=false
+        elif [[ \"$item\" =~ ^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$ ]]; then
+            opts+=( \"$item\" )
+        elif [[ \"$item\" =~ ^(-r|-s|--root|--sensor)$ ]]; then
+            next=true
+            opts+=( \"$item\" )
+        fi
+    done
+    opts+=( \"$@\" )
+    tio rpc list \"${opts[@]}\" 2>/dev/null || echo '[RPC_LIST_FAILED]'
 }
 
 if [[ \"${BASH_VERSINFO[0]}\" -eq 4 && \"${BASH_VERSINFO[1]}\" -ge 4 || \"${BASH_VERSINFO[0]}\" -gt 4 ]]; then
@@ -372,10 +372,10 @@ _arguments \"${_arguments_options[@]}\" : \\
 ",
 "
         words=($line[1] \"${words[@]}\")
-		(( CURRENT += 1 ))
-		curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[1]:\"
-		case $line[1] in
-			(list)
+        (( CURRENT += 1 ))
+        curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[1]:\"
+        case $line[1] in
+            (list)
 "
     )?;
 
@@ -452,54 +452,54 @@ _tio__subcmd__rpc_commands() {
     "
 (( $+functions[_tio__helper__list_rpcs] )) ||
 _tio__helper__list_rpcs() {
-	local opts=()
-	local next=false;
-	for item in $@; do
-		if $next; then
-			opts+=( \"$item\" )
-			next=false;
-		elif [[ \"$item\" =~ \"^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$\" ]]; then
-			opts+=( \"$item\" )
-		elif [[ \"$item\" =~ \"^(-r|-s|--root|--sensor)$\" ]]; then
-			next=true;
-			opts+=( \"$item\" )
-		fi
-	done
-	IFS=$'\\n' reply=($(tio rpc list $opts 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+    local opts=()
+    local next=false;
+    for item in $@; do
+        if $next; then
+            opts+=( \"$item\" )
+            next=false;
+        elif [[ \"$item\" =~ \"^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$\" ]]; then
+            opts+=( \"$item\" )
+        elif [[ \"$item\" =~ \"^(-r|-s|--root|--sensor)$\" ]]; then
+            next=true;
+            opts+=( \"$item\" )
+        fi
+    done
+    IFS=$'\\n' reply=($(tio rpc list $opts 2>/dev/null || echo '[RPC_LIST_FAILED]'))
 }
 (( $+functions[_tio__subcmd__rpc_names] )) ||
 _tio__subcmd__rpc_names() {
-	# We've been passed an argument array of zsh stuff and then what we added
-	# The last element is the length of what we added, we use that to get the rest
-	# We use set -- to slice this off of $@ so that the zsh stuff can do its job
-	local len=${@[-1]}
-	local opts=( ${@[-$len,-2]} )
-	set -- ${@:1:-$len}
+    # We've been passed an argument array of zsh stuff and then what we added
+    # The last element is the length of what we added, we use that to get the rest
+    # We use set -- to slice this off of $@ so that the zsh stuff can do its job
+    local len=${@[-1]}
+    local opts=( ${@[-$len,-2]} )
+    set -- ${@:1:-$len}
 
     local commands
-	_tio__helper__list_rpcs ${opts[@]} --name-only
-	commands=( \"${reply[@]}\" )
+    _tio__helper__list_rpcs ${opts[@]} --name-only
+    commands=( \"${reply[@]}\" )
     _describe -t commands 'rpc names' commands \"$@\"
 }
 (( $+functions[_tio__subcmd__capture_rpc_names] )) ||
 _tio__subcmd__capture_rpc_names() {
-	local len=${@[-1]}
-	local opts=( ${@[-$len,-2]} )
-	set -- ${@:1:-$len}
+    local len=${@[-1]}
+    local opts=( ${@[-$len,-2]} )
+    set -- ${@:1:-$len}
 
-	local commands
-	_tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
-	commands=( \"${reply[@]}\" )
+    local commands
+    _tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
+    commands=( \"${reply[@]}\" )
     _describe -t commands 'capture rpc names' commands \"$@\"
 }
 (( $+functions[_tio__subcmd__rpc_commands] )) ||
 _tio__subcmd__rpc_commands() {
-	local len=${@[-1]}
-	local opts=( ${@[-$len,-2]} )
-	set -- ${@:1:-$len}
+    local len=${@[-1]}
+    local opts=( ${@[-$len,-2]} )
+    set -- ${@:1:-$len}
 
     local commands
-	_tio__helper__list_rpcs ${opts[@]} --name-only
+    _tio__helper__list_rpcs ${opts[@]} --name-only
     commands=( \"${reply[@]}\" )
     commands=( \"${commands[@]}\"
 "
