@@ -47,14 +47,20 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
             tio__subcmd__rpc,list)
                 cmd=\"tio__subcmd__rpc__subcmd__list\"
                 ;;
-            tio__subcmd__rpc,[a-zA-Z0-9.]*)
-                cmd=\"tio__subcmd__rpc__subcmd__rpcname\"
+            tio__subcmd__rpc,*)
+                if [[ \"$i\" =~ \"[a-zA-Z0-9.]+\" ]]; then
+                    cmd=\"tio__subcmd__rpc__subcmd__rpcname\"
+                fi
                 ;;
-            tio__subcmd__rpc__subcmd__dump,[a-zA-Z0-9.]*)
-                cmd=\"tio__subcmd__rpc__subcmd__dump__subcmd__rpcname\"
+            tio__subcmd__rpc__subcmd__dump,*)
+                if [[ \"$i\" =~ \"[a-zA-Z0-9.]+\" ]]; then
+                    cmd=\"tio__subcmd__rpc__subcmd__dump__subcmd__rpcname\"
+                fi
                 ;;
-            tio__subcmd__capture,[a-zA-Z0-9.]*)
-				cmd=\"tio__subcmd__capture__subcmd__rpcname\"
+            tio__subcmd__capture,*)
+                if [[ \"$i\" =~ \"[a-zA-Z0-9.]+\" ]]; then
+                    cmd=\"tio__subcmd__capture__subcmd__rpcname\"
+                fi
 				;;
 
     ")?;
