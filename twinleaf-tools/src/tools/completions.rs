@@ -2,11 +2,27 @@ use clap::CommandFactory;
 use crate::{TioCli, CompletionsCli};
 
 /// Generate shell completion code and output to stdout
-/// This starts based on clap_complete's static completion code
-/// For bash and zsh, we read that generated code from a file,
-/// load it into a string, and then perform a series of search-and-
-/// replaces to it to add dynamic RPC name completion logic. 
-/// (see twinleaf-tools/build-completions.sh) 
+
+/// clap_complete already generates 'static' completion code for
+/// Bash, Zsh, Fish, Elvish, and Powershell based on the built-in
+/// CLI.  However, we can add 'dynamic' behaviour by editing the
+/// completion scripts to include calls to `tio rpc list`, letting
+/// us shell-complete RPC names.
+///
+/// We do this by reading using clap_complete to generate the
+/// static completion code and write it to a file in the repo (see
+/// twinleaf-tools/build-completions.sh). We read that file into a
+/// Rust string, and then perform a series of search-and-replaces
+/// to add the RPC name completion logic to `tio rpc` and `tio
+/// capture`.
+///
+/// We then print this string to stdout, just like clap_complete
+/// normally does, so that the user can source the output in their
+/// shell rc.
+///
+/// This currently is only implemented for Bash and Zsh and there
+/// are no plans to attempt to implement it for the other shells,
+/// as each shell has its own unique and difficult completion logic
 
 /// NOTE: A lot of this code contains exact strings from the current
 /// CLI and can easily break upon changes as simple as adding
