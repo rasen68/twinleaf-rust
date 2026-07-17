@@ -323,43 +323,31 @@ fn generate_zsh_dynamic() -> eyre::Result<()> {
     // _tio__subcmd__rpc_commands to generate rpc names and let
     // subcommands append their own _arguments if we get one
     completions.replace(
-        "
+"
 (rpc)
 _arguments \"${_arguments_options[@]}\" : \\
-'-r+[Sensor root address]:ROOT:_urls' \\
-'--root=[Sensor root address]:ROOT:_urls' \\
-'-s+[Sensor path in the sensor tree]:ROUTE:_default' \\
-'--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \\
-'-t+[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'--req-type=[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'-T+[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'-d[Enable debug output]' \\
-'--debug[Enable debug output]' \\
-'-h[Print help]' \\
-'--help[Print help]' \\
+",
+"
+(rpc)
+if [[ \"$words[2]\" == -* ]]; then
+_arguments \"${_arguments_options[@]}\" : \\
+"
+    )?;
+
+    // If we are in -*, we want to call rpc names (not including
+    // subcommands). It parses additional arguments from a slice
+    // of line array: from 2 (first thing after "rpc") to -2 (last
+    // completed option). We also pass the length of what we added
+    // so it can slice it off.
+    completions.replace(
+"
 '::rpc_name -- RPC name to execute:' \\
 '::rpc_arg -- RPC argument value:' \\
 \":: :_tio__subcmd__rpc_commands\" \\
 \"*::: :->rpc\" \\
 && ret=0
 ",
-        "
-(rpc)
-if [[ \"$words[2]\" == -* ]]; then
-_arguments \"${_arguments_options[@]}\" : \\
-'-r+[Sensor root address]:ROOT:_urls' \\
-'--root=[Sensor root address]:ROOT:_urls' \\
-'-s+[Sensor path in the sensor tree]:ROUTE:_default' \\
-'--sensor=[Sensor path in the sensor tree]:ROUTE:_default' \\
-'-t+[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'--req-type=[RPC request type]:REQ_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'-T+[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
-'-d[Enable debug output]' \\
-'--debug[Enable debug output]' \\
-'-h[Print help]' \\
-'--help[Print help]' \\
+"
 \":: :_tio__subcmd__rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\
 ':rpc_arg -- RPC argument value:' \\
 && ret=0
@@ -370,57 +358,62 @@ _arguments \"${_arguments_options[@]}\" : \\
 \":: :_tio__subcmd__rpc_commands\" \\
 \"*::: :->rpc\" \\
 && ret=0
-",
+"
     )?;
 
+
     // Change matching logic to look at last completed word
-    completions.replace("
+    completions.replace(
+"
         words=($line[3] \"${words[@]}\")
         (( CURRENT += 1 ))
         curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[3]:\"
         case $line[3] in
-            (list)",
-
-    "
+            (list)
+",
+"
         words=($line[1] \"${words[@]}\")
 		(( CURRENT += 1 ))
 		curcontext=\"${curcontext%:*:*}:tio-rpc-command-$line[1]:\"
 		case $line[1] in
-			(list)")?;
+			(list)
+"
+    )?;
 
     // Close the if/else opened due to checking whether we had
     // an option after tio rpc
     completions.replace(
-        "
+"
         esac
     ;;
 esac
 ;;
-(capture)",
-        "
+(capture)
+",
+"
         esac
     ;;
 esac
 fi
 ;;
-(capture)",
+(capture)
+"
     )?;
 
     // Pass additional arguments to _tio__subcmd__rpc_commands
-    // We slice line from 2 (first thing after "rpc") to -2 (last completed option)
-    // We also pass the length of what we added so it can slice it off
-    completions.replace("\":: :_tio__subcmd__rpc_commands\" \\",
-    "\":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\")?;
+    completions.replace(
+        "\":: :_tio__subcmd__rpc_commands\" \\",
+        "\":: :_tio__subcmd__rpc_commands ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\"
+    )?;
 
     // Remove rpc name from dump opts,
     // And use it as a hook to add case for last word being just "rpc"
     // If it is, we are at "tio rpc" and want to complete rpc names
     // We do a similar slicing thing to above using our saved _line
     // But we start from 3 to not pass the "dump"
-    completions.replace("
-':rpc_name -- RPC name to dump:' \\",
-
-    "
+    completions.replace(
+        "':rpc_name -- RPC name to dump:' \\",
+"\
 \":: :_tio__subcmd__rpc_names ${_line[3,-2]} $(( ${#_line[3,-2]} + 1 ))\" \\
 && ret=0
 ;;
@@ -438,11 +431,15 @@ _arguments \"${_arguments_options[@]}\" : \\
 '--rep-type=[RPC reply type]:REP_TYPE:(u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 string)' \\
 '-d[Enable debug output]' \\
 '--debug[Enable debug output]' \\
-':rpc_arg -- RPC argument value:' \\")?;
+':rpc_arg -- RPC argument value:' \\\
+"
+    )?;
 
     // Replace capture rpc name with dynamic completion, and pass in line
-    completions.replace("'::rpc_name -- Capture RPC name to execute:' \\",
-    "\":: :_tio__subcmd__capture_rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\")?;
+    completions.replace(
+        "'::rpc_name -- Capture RPC name to execute:' \\",
+        "\":: :_tio__subcmd__capture_rpc_names ${line[2,-2]} $(( ${#line[2,-2]} + 1 ))\" \\"
+    )?;
 
     // Add functions to dynamically get rpc names,
     // Replacing old completion case for "tio rpc [list/dump/[RPC_NAME]"
