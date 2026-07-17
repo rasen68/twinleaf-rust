@@ -99,22 +99,16 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     ")?;
 
 
-    // Read dynamic RPC completions into options list
+    // Replace tio__subcmd__rpc's placeholder args
     // The helper function checks whether we are completion an option
     // or an rpc name, and only appends rpcs in the latter case
-    completions.replace("
-        tio__subcmd__rpc)
-            opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [RPC_NAME] [ARG] list dump\"
-    ",
-    "
-        tio__subcmd__rpc)
-			opts=\"-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $(_tio__helper__append_rpcs --name-only)\"
-    ")?;
-    // Note: I personally like literally showing [RPC_LIST_FAILED] as an option to make it
-    // clear what went wrong, but you could also just echo nothing since there is nothing to complete
+    completions.replace(
+        "[RPC_NAME] [ARG] list dump",
+        "list dump $(_tio__helper__append_rpcs --name-only)"
+    )?;
 
-    // Add rpcname as subcmd to suggest an arg instead of more rpc names
-    // We do this by hooking on dump subcmd and appending in front of it
+    // Add rpcname as subcmd to suggest an arg instead of more rpcs
+    // We append this case in front of the dump subcmd
     // TODO: We could try to copy this from earlier in the string
     // Which would make this more readable and maintainable, but that sounds hard
     completions.replace("
@@ -172,15 +166,11 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     ")?;
 
 
-    // Add dynamic completions to rpc dump
-    completions.replace("
-        tio__subcmd__rpc__subcmd__dump)
-            opts=\"-r -s -h --root --sensor --capture --help <RPC_NAME>\"
-    ",
-    "
-        tio__subcmd__rpc__subcmd__dump)
-            opts=\"-r -s -h --root --sensor --capture --help $(_tio__helper__append_rpcs --name-only)\"
-    ")?;
+    // Replae dump subcmd's mandatory <RPC_NAME> placeholder
+    completions.replace(
+        "<RPC_NAME>",
+        "$(_tio__helper__append_rpcs --name-only)"
+    )?;
 
     // Add rpcname as subcmd to dump and capture
     // It doesn't really matter where these go so we'll put them before rpc list
@@ -256,15 +246,11 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
         tio__subcmd__rpc__subcmd__list)
     ")?;
 
-    // Add dynamic completions to tio capture
-    completions.replace("
-        tio__subcmd__capture)
-            opts=\"-r -s -h --root --sensor --timeout --help [RPC_NAME]\"
-    ",
-    "
-        tio__subcmd__capture)
-			opts=\"-r -s -h --root --sensor --timeout --help $(_tio__helper__append_rpcs --name-only --capture-only)\"
-    ")?;
+    // Replace tio capture's [RPC_NAME] (only one left)
+    completions.replace(
+        "[RPC_NAME]",
+		"$(_tio__helper__append_rpcs --name-only --capture-only)"
+    )?;
 
     // Helpers: gate RPC listing to positional completions, and forward -r/-s/--root/--sensor
     completions.replace("

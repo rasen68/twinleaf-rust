@@ -116,7 +116,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__capture)
-			opts="-r -s -h --root --sensor --timeout --help $(_tio__helper__append_rpcs --name-only --capture-only)"
+            opts="-r -s -h --root --sensor --timeout --help $(_tio__helper__append_rpcs --name-only --capture-only)"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -626,7 +626,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc)
-			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $(_tio__helper__append_rpcs --name-only)"
+            opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $(_tio__helper__append_rpcs --name-only)"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
