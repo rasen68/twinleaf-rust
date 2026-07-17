@@ -550,21 +550,6 @@ _tio__subcmd__rpc_names() {
 	commands=( "${reply[@]}" )
     _describe -t commands 'rpc names' commands "$@"
 }
-(( $+functions[_tio__subcmd__rpc_commands] )) ||
-_tio__subcmd__rpc_commands() {
-	local len=${@[-1]}
-	local opts=( ${@[-$len,-2]} )
-	set -- ${@:1:-$len}
-
-	local commands
-	_tio__helper__list_rpcs ${opts[@]} --name-only
-	commands=( "${reply[@]}" )
-	commands=( "${commands[@]}"
-'list:List available RPCs on the device' \
-'dump:Dump RPC data from the device' \
-    )
-    _describe -t commands 'rpc names / tio rpc commands' commands "$@"
-}
 (( $+functions[_tio__subcmd__capture_rpc_names] )) ||
 _tio__subcmd__capture_rpc_names() {
 	local len=${@[-1]}
@@ -575,6 +560,21 @@ _tio__subcmd__capture_rpc_names() {
 	_tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
 	commands=( "${reply[@]}" )
     _describe -t commands 'capture rpc names' commands "$@"
+}
+(( $+functions[_tio__subcmd__rpc_commands] )) ||
+_tio__subcmd__rpc_commands() {
+	local len=${@[-1]}
+	local opts=( ${@[-$len,-2]} )
+	set -- ${@:1:-$len}
+
+    local commands
+	_tio__helper__list_rpcs ${opts[@]} --name-only
+    commands=( "${reply[@]}" )
+    commands=( "${commands[@]}"
+'list:List available RPCs on the device' \
+'dump:Dump RPC data from the device' \
+    )
+    _describe -t commands 'tio rpc commands' commands "$@"
 }
 (( $+functions[_tio__subcmd__rpc__subcmd__dump_commands] )) ||
 _tio__subcmd__rpc__subcmd__dump_commands() {
