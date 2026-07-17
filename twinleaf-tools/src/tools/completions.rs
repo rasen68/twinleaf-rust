@@ -1,6 +1,22 @@
 use clap::CommandFactory;
 use crate::{TioCli, CompletionsCli};
 
+/// Generate shell completion code and output to stdout
+/// This starts based on clap_complete's static completion code
+/// For bash and zsh, we read that generated code from a file,
+/// load it into a string, and then perform a series of search-and-
+/// replaces to it to add dynamic RPC name completion logic. 
+/// (see twinleaf-tools/build-completions.sh) 
+
+/// NOTE: A lot of this code contains exact strings from the current
+/// CLI and can easily break upon changes as simple as adding
+/// extra flags to rpc-related or even changing the docstrings
+/// to tio rpc options. I haven't implemented a great way to get
+/// around this, so it may take some manual updating if changes
+/// are made in those regards. It should play nicely with CLI
+/// changes to pretty much anything other than tio rpc though, as
+/// it does not touch any of that.
+
 pub fn run_completions(completions_cli: CompletionsCli) -> eyre::Result<()> {
     match (completions_cli.r#static, completions_cli.shell) {
         (false, clap_complete::Shell::Bash) => generate_bash_dynamic(),
@@ -9,6 +25,7 @@ pub fn run_completions(completions_cli: CompletionsCli) -> eyre::Result<()> {
     }
 }
 
+// Wrapper to ensure replaces fail loudly if they aren't one-to-one
 struct Completions {
     completions: String,
 }
