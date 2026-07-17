@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # This should be run after any changes to completions or CLI
+# It will make sure the new completion scripts generate properly, and update the repo with them
 
 echo "Initial build..."
 cargo build
@@ -18,10 +19,12 @@ echo "Generating dynamic scripts"
 "$TIO" completions bash > "$COMP"_dynamic.bash || exit 1
 "$TIO" completions zsh > "$COMP"_dynamic.zsh || exit 1
 
+# ensure generated scripts work in bash / zsh
 echo "Testing generated scripts"
 bash -n "$COMP"_dynamic.bash || exit 1
 zsh -n "$COMP"_dynamic.zsh || exit 1
 
+# optional autocommit
 if [[ "$1" == "--commit" ]]; then
 	echo "Creating git commit"
 	git add "$COMP"*
