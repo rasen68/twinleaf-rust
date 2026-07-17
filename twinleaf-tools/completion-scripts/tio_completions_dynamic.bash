@@ -80,17 +80,17 @@ _tio() {
                 cmd="tio__subcmd__rpc__subcmd__list"
                 ;;
             tio__subcmd__rpc,*)
-                if [[ "$i" =~ [a-zA-Z0-9.] ]]; then
+                if [[ "$i" =~ ^[a-zA-Z0-9.]+$ ]]; then
                     cmd="tio__subcmd__rpc__subcmd__rpcname"
                 fi
                 ;;
             tio__subcmd__rpc__subcmd__dump,*)
-                if [[ "$i" =~ [a-zA-Z0-9.] ]]; then
+                if [[ "$i" =~ ^[a-zA-Z0-9.]+$ ]]; then
                     cmd="tio__subcmd__rpc__subcmd__dump__subcmd__rpcname"
                 fi
                 ;;
             tio__subcmd__capture,*)
-                if [[ "$i" =~ [a-zA-Z0-9.] ]]; then
+                if [[ "$i" =~ ^[a-zA-Z0-9.]+$ ]]; then
                     cmd="tio__subcmd__capture__subcmd__rpcname"
                 fi
 				;;
