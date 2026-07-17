@@ -94,7 +94,6 @@ _tio() {
                     cmd="tio__subcmd__capture__subcmd__rpcname"
                 fi
 				;;
-
             *)
                 ;;
         esac

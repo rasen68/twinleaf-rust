@@ -95,7 +95,6 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
                     cmd=\"tio__subcmd__capture__subcmd__rpcname\"
                 fi
 				;;
-
     ")?;
 
 
