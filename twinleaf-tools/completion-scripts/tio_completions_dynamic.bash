@@ -972,11 +972,11 @@ _tio__helper__list_rpcs() {
 	local opts=()
 	local next=false
 	local item
+    # $COMP_WORDS breaks on : & = which is bad for roots and flags;
+    # This function fills $words with a version that doesn't
+    _get_comp_words_by_ref -n := words
 	# Scan completed words only; forward -r/-s/--root/--sensor
-	for item in "${COMP_WORDS[@]:0:COMP_CWORD}"; do
-        # Bash sometimes breaks --sensor=/0 into three tokens
-        # Skip the middle = so /0 is the next of --sensor
-		[[ "$item" == '=' ]] && continue;
+	for item in "${words[@]}"; do
 		if $next; then
 			opts+=( "$item" )
 			next=false
