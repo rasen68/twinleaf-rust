@@ -52,6 +52,6 @@ jobs:
         - name: Ensure new dynamic completions are committed
           run: |
             if ! git diff --quiet --exit-code -- twinleaf-tools/completion-scripts/; then
-            echo "::error::New dynamic completions are not committed. Run twinleaf-tools/build-completions.sh and commit"
-            exit 1
-          fi
+              echo "::error::New dynamic completions are not committed. Run twinleaf-tools/build-completions.sh and commit"
+              exit 1
+            fi
