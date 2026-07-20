@@ -93,7 +93,7 @@ _tio() {
                 if [[ "$i" =~ ^[a-zA-Z0-9.]+$ ]]; then
                     cmd="tio__subcmd__capture__subcmd__rpcname"
                 fi
-				;;
+                ;;
             *)
                 ;;
         esac
@@ -671,7 +671,7 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc__subcmd__rpcname)
-			opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [ARG]"
+            opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help [ARG]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -952,20 +952,20 @@ _tio() {
 }
 
 _tio__helper__append_rpcs() {
-	# Only fetch when completing a positional (RPC name), not a flag/value
-	if [[ ${cur} == -* ]]; then
-		return
-	fi
-	case "${prev}" in
-		-r|--root|-s|--sensor|-t|--req-type|-T|--rep-type|--timeout)
-			return
-			;;
-	esac
-	local rpcs
-	rpcs="$(_tio__helper__list_rpcs "$@")"
-	rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
-	rpcs="${rpcs% }"     # remove trailing whitespace
-	echo "$rpcs"
+    # Only fetch when completing a positional (RPC name), not a flag/value
+    if [[ ${cur} == -* ]]; then
+        return
+    fi
+    case "${prev}" in
+        -r|--root|-s|--sensor|-t|--req-type|-T|--rep-type|--timeout)
+            return
+            ;;
+    esac
+    local rpcs
+    rpcs="$(_tio__helper__list_rpcs "$@")"
+    rpcs="${rpcs//$'\n'/ }" # replace newlines with spaces
+    rpcs="${rpcs% }"     # remove trailing whitespace
+    echo "$rpcs"
 }
 _tio__helper__list_rpcs() {
 	local opts=()

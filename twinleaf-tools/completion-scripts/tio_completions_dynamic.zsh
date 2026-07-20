@@ -241,10 +241,10 @@ _arguments "${_arguments_options[@]}" : \
     case $state in
     (rpc)
         words=($line[1] "${words[@]}")
-		(( CURRENT += 1 ))
-		curcontext="${curcontext%:*:*}:tio-rpc-command-$line[1]:"
-		case $line[1] in
-			(list)
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:tio-rpc-command-$line[1]:"
+        case $line[1] in
+            (list)
 _arguments "${_arguments_options[@]}" : \
 '-r+[Sensor root address]:ROOT:_urls' \
 '--root=[Sensor root address]:ROOT:_urls' \
@@ -521,54 +521,54 @@ _tio__subcmd__proxy__subcmd__nmea_commands() {
 }
 (( $+functions[_tio__helper__list_rpcs] )) ||
 _tio__helper__list_rpcs() {
-	local opts=()
-	local next=false;
-	for item in $@; do
-		if $next; then
-			opts+=( "$item" )
-			next=false;
-		elif [[ "$item" =~ "^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$" ]]; then
-			opts+=( "$item" )
-		elif [[ "$item" =~ "^(-r|-s|--root|--sensor)$" ]]; then
-			next=true;
-			opts+=( "$item" )
-		fi
-	done
-	IFS=$'\n' reply=($(tio rpc list $opts 2>/dev/null || echo '[RPC_LIST_FAILED]'))
+    local opts=()
+    local next=false;
+    for item in $@; do
+        if $next; then
+            opts+=( "$item" )
+            next=false;
+        elif [[ "$item" =~ "^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$" ]]; then
+            opts+=( "$item" )
+        elif [[ "$item" =~ "^(-r|-s|--root|--sensor)$" ]]; then
+            next=true;
+            opts+=( "$item" )
+        fi
+    done
+    IFS=$'\n' reply=($(tio rpc list $opts 2>/dev/null || echo '[RPC_LIST_FAILED]'))
 }
 (( $+functions[_tio__subcmd__rpc_names] )) ||
 _tio__subcmd__rpc_names() {
-	# We've been passed an argument array of zsh stuff and then what we added
-	# The last element is the length of what we added, we use that to get the rest
-	# We use set -- to slice this off of $@ so that the zsh stuff can do its job
-	local len=${@[-1]}
-	local opts=( ${@[-$len,-2]} )
-	set -- ${@:1:-$len}
+    # We've been passed an argument array of zsh stuff and then what we added
+    # The last element is the length of what we added, we use that to get the rest
+    # We use set -- to slice this off of $@ so that the zsh stuff can do its job
+    local len=${@[-1]}
+    local opts=( ${@[-$len,-2]} )
+    set -- ${@:1:-$len}
 
     local commands
-	_tio__helper__list_rpcs ${opts[@]} --name-only
-	commands=( "${reply[@]}" )
+    _tio__helper__list_rpcs ${opts[@]} --name-only
+    commands=( "${reply[@]}" )
     _describe -t commands 'rpc names' commands "$@"
 }
 (( $+functions[_tio__subcmd__capture_rpc_names] )) ||
 _tio__subcmd__capture_rpc_names() {
-	local len=${@[-1]}
-	local opts=( ${@[-$len,-2]} )
-	set -- ${@:1:-$len}
+    local len=${@[-1]}
+    local opts=( ${@[-$len,-2]} )
+    set -- ${@:1:-$len}
 
-	local commands
-	_tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
-	commands=( "${reply[@]}" )
+    local commands
+    _tio__helper__list_rpcs ${opts[@]} --name-only --capture-only
+    commands=( "${reply[@]}" )
     _describe -t commands 'capture rpc names' commands "$@"
 }
 (( $+functions[_tio__subcmd__rpc_commands] )) ||
 _tio__subcmd__rpc_commands() {
-	local len=${@[-1]}
-	local opts=( ${@[-$len,-2]} )
-	set -- ${@:1:-$len}
+    local len=${@[-1]}
+    local opts=( ${@[-$len,-2]} )
+    set -- ${@:1:-$len}
 
     local commands
-	_tio__helper__list_rpcs ${opts[@]} --name-only
+    _tio__helper__list_rpcs ${opts[@]} --name-only
     commands=( "${reply[@]}" )
     commands=( "${commands[@]}"
 'list:List available RPCs on the device' \
