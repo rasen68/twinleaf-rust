@@ -136,7 +136,7 @@ _comp_test tio rpc -s /0 -t u8 ""
 EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} ${TIO_SIM_RPCS[@]} )
 _comp_test tio rpc dump -s /0 --capture ""
 
-EXPECTED=( ${TIO_CAPTURE_OPTS[@]} test.capture )
+EXPECTED=( a${TIO_CAPTURE_OPTS[@]} test.capture )
 _comp_test tio capture -s /0 --timeout 1 ""
 
 # Shut down our remaining tio proxy

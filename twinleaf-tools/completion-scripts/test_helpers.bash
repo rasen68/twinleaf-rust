@@ -24,6 +24,7 @@ _tio_sim() {
 _fail_test() {
 	echo "" >&2
 	echo "FAILED: $*"
+	echo "FAILED: $*" >&2
 	echo "Expected: ${EXPECTED[*]}" >&2
 	echo "Actual:   ${ACTUAL[*]}" >&2
 	echo "" >&2
