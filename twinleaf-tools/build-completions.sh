@@ -1,11 +1,40 @@
 #!/usr/bin/env bash
 # This should be run after any changes to completions or CLI
 # It will make sure the new completion scripts generate properly, and update the repo with them
+# You can use --skip-initial-build if there are no changes to the CLI itself
 
-echo "Initial build..."
-cargo build
 TIO=../target/debug/tio
 COMP=completion-scripts/tio_completions
+
+# Overkill option handler
+commit=false skip_initial_build=false bad_opt=false
+for i in "$@"; do
+	case $i in
+		-c|--commit)
+			commit=true
+			shift
+			;;
+		-s|--skip-initial-build)
+			skip_initial_build=true
+			shift
+			;;
+		-*|--*)
+			bad_opt=true
+			echo "Unknown option $i" >&2
+			;;
+		*)
+			;;
+	esac
+done
+
+if $bad_opt; then
+	exit 1
+fi
+
+if ! $skip_initial_build; then
+	echo "Initial build..."
+	cargo build
+fi
 
 # generate static scripts
 echo "Generating static scripts"
