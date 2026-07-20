@@ -67,6 +67,9 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     let static_completions = include_str!("../../completion-scripts/tio_completions_static.bash");
     let mut completions = Completions::new(static_completions.to_string());
 
+    // Replace COMP_WORDS with words from _get_comp_words_by_ref
+    // Also set up rpc_opt for completing rpc names/subcmds
+    // And next for parsing tio rpc options w/ args
     completions.replace(
 "
     local i cur prev opts cmd
@@ -83,7 +86,7 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     for i in \"${COMP_WORDS[@]:0:COMP_CWORD}\"
 ",
 "
-    local i cur prev opts cmd words
+    local i cur prev opts cmd words next rpc_opt
     COMPREPLY=()
     # $COMP_WORDS breaks on : & = which is bad for roots and flags;
     # This function fills $words with a version that doesn't
@@ -96,6 +99,8 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     prev=\"$3\"
     cmd=\"\"
     opts=\"\"
+    next=false
+    rpc_opt=false
 
     for i in \"${words[@]:0:COMP_CWORD}\"
 "
@@ -106,6 +111,7 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     // Assume RPC names are all letters, numbers, and dots
     // Flags (which have dashes), sensor routes (which have slashes),
     // and root urls (which probably have ://) will not count
+    // We use $next to avoid reading something like -t u8 as an rpc
     completions.replace("
             tio__subcmd__rpc,list)
                 cmd=\"tio__subcmd__rpc__subcmd__list\"
@@ -116,17 +122,32 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
                 cmd=\"tio__subcmd__rpc__subcmd__list\"
                 ;;
             tio__subcmd__rpc,*)
-                if [[ \"$i\" =~ ^[a-zA-Z0-9.]+$ ]]; then
+                if $next; then
+                    next=false
+                elif [[ \"$i\" =~ ^(-r|-s|-t|-T|--root|--sensor|--rep-type|--req-type)$ ]]; then
+                    next=true
+                    rpc_opt=true
+                elif [[ \"$i\" == -* ]]; then
+                    rpc_opt=true
+                else
                     cmd=\"tio__subcmd__rpc__subcmd__rpcname\"
                 fi
                 ;;
             tio__subcmd__rpc__subcmd__dump,*)
-                if [[ \"$i\" =~ ^[a-zA-Z0-9.]+$ ]]; then
+                if $next; then
+                    next=false
+                elif [[ \"$i\" =~ ^(-r|-s|--root|--sensor)$ ]]; then
+                    next=true
+                elif [[ \"$i\" != -* ]]; then
                     cmd=\"tio__subcmd__rpc__subcmd__dump__subcmd__rpcname\"
                 fi
                 ;;
             tio__subcmd__capture,*)
-                if [[ \"$i\" =~ ^[a-zA-Z0-9.]+$ ]]; then
+                if $next; then
+                    next=false
+                elif [[ \"$i\" =~ ^(-r|-s|--root|--sensor|--timeout)$ ]]; then
+                    next=true
+                elif [[ \"$i\" != -* ]]; then
                     cmd=\"tio__subcmd__capture__subcmd__rpcname\"
                 fi
                 ;;
@@ -134,11 +155,17 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
 
 
     // Replace tio__subcmd__rpc's placeholder args
+    // Don't add list and dump if we have an option after tio rpc
     // The helper function checks whether we are completion an option
     // or an rpc name, and only appends rpcs in the latter case
     completions.replace(
-        "[RPC_NAME] [ARG] list dump",
-        "list dump $(_tio__helper__append_rpcs --name-only)"
+        "[RPC_NAME] [ARG] list dump\"\n",
+"\"
+            if ! $rpc_opt; then
+                opts=\"$opts list dump\"
+            fi
+            opts=\"$opts $(_tio__helper__append_rpcs --name-only)\"
+"
     )?;
 
     // Add rpcname as subcmd to suggest an arg instead of more rpcs

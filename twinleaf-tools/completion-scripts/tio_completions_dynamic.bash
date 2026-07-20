@@ -1,5 +1,5 @@
 _tio() {
-    local i cur prev opts cmd words
+    local i cur prev opts cmd words next rpc_opt
     COMPREPLY=()
     # $COMP_WORDS breaks on : & = which is bad for roots and flags;
     # This function fills $words with a version that doesn't
@@ -12,6 +12,8 @@ _tio() {
     prev="$3"
     cmd=""
     opts=""
+    next=false
+    rpc_opt=false
 
     for i in "${words[@]:0:COMP_CWORD}"
     do
@@ -83,17 +85,32 @@ _tio() {
                 cmd="tio__subcmd__rpc__subcmd__list"
                 ;;
             tio__subcmd__rpc,*)
-                if [[ "$i" =~ ^[a-zA-Z0-9.]+$ ]]; then
+                if $next; then
+                    next=false
+                elif [[ "$i" =~ ^(-r|-s|-t|-T|--root|--sensor|--rep-type|--req-type)$ ]]; then
+                    next=true
+                    rpc_opt=true
+                elif [[ "$i" == -* ]]; then
+                    rpc_opt=true
+                else
                     cmd="tio__subcmd__rpc__subcmd__rpcname"
                 fi
                 ;;
             tio__subcmd__rpc__subcmd__dump,*)
-                if [[ "$i" =~ ^[a-zA-Z0-9.]+$ ]]; then
+                if $next; then
+                    next=false
+                elif [[ "$i" =~ ^(-r|-s|--root|--sensor)$ ]]; then
+                    next=true
+                elif [[ "$i" != -* ]]; then
                     cmd="tio__subcmd__rpc__subcmd__dump__subcmd__rpcname"
                 fi
                 ;;
             tio__subcmd__capture,*)
-                if [[ "$i" =~ ^[a-zA-Z0-9.]+$ ]]; then
+                if $next; then
+                    next=false
+                elif [[ "$i" =~ ^(-r|-s|--root|--sensor|--timeout)$ ]]; then
+                    next=true
+                elif [[ "$i" != -* ]]; then
                     cmd="tio__subcmd__capture__subcmd__rpcname"
                 fi
                 ;;
@@ -628,7 +645,11 @@ _tio() {
             return 0
             ;;
         tio__subcmd__rpc)
-            opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help list dump $(_tio__helper__append_rpcs --name-only)"
+            opts="-r -s -t -T -d -h --root --sensor --req-type --rep-type --debug --help "
+            if ! $rpc_opt; then
+                opts="$opts list dump"
+            fi
+            opts="$opts $(_tio__helper__append_rpcs --name-only)"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
