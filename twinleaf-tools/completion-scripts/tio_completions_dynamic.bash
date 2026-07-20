@@ -1,16 +1,19 @@
 _tio() {
-    local i cur prev opts cmd
+    local i cur prev opts cmd words
     COMPREPLY=()
+    # $COMP_WORDS breaks on : & = which is bad for roots and flags;
+    # This function fills $words with a version that doesn't
+    _get_comp_words_by_ref -n := words
     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
         cur="$2"
     else
-        cur="${COMP_WORDS[COMP_CWORD]}"
+        cur="${words[COMP_CWORD]}"
     fi
     prev="$3"
     cmd=""
     opts=""
 
-    for i in "${COMP_WORDS[@]:0:COMP_CWORD}"
+    for i in "${words[@]:0:COMP_CWORD}"
     do
         case "${cmd},${i}" in
             ",$1")
@@ -968,26 +971,23 @@ _tio__helper__append_rpcs() {
     echo "$rpcs"
 }
 _tio__helper__list_rpcs() {
-	local opts=()
-	local next=false
-	local item
-    # $COMP_WORDS breaks on : & = which is bad for roots and flags;
-    # This function fills $words with a version that doesn't
-    _get_comp_words_by_ref -n := words
-	# Scan completed words only; forward -r/-s/--root/--sensor
-	for item in "${words[@]}"; do
-		if $next; then
-			opts+=( "$item" )
-			next=false
-		elif [[ "$item" =~ ^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$ ]]; then
-			opts+=( "$item" )
-		elif [[ "$item" =~ ^(-r|-s|--root|--sensor)$ ]]; then
-			next=true
-			opts+=( "$item" )
-		fi
-	done
-	opts+=( "$@" )
-	tio rpc list "${opts[@]}" 2>/dev/null || echo '[RPC_LIST_FAILED]'
+    local opts=()
+    local next=false
+    local item
+    # Scan completed words; forward -r/-s/--root/--sensor
+    for item in "${words[@]}"; do
+        if $next; then
+            opts+=( "$item" )
+            next=false
+        elif [[ "$item" =~ ^(--name-only|--capture-only|--root=.+|--sensor=.+|-s.+|-r.+)$ ]]; then
+            opts+=( "$item" )
+        elif [[ "$item" =~ ^(-r|-s|--root|--sensor)$ ]]; then
+            next=true
+            opts+=( "$item" )
+        fi
+    done
+    opts+=( "$@" )
+    tio rpc list "${opts[@]}" 2>/dev/null || echo '[RPC_LIST_FAILED]'
 }
 
 if [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -ge 4 || "${BASH_VERSINFO[0]}" -gt 4 ]]; then

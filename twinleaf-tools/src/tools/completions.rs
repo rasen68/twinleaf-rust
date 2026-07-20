@@ -67,6 +67,41 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     let static_completions = include_str!("../../completion-scripts/tio_completions_static.bash");
     let mut completions = Completions::new(static_completions.to_string());
 
+    completions.replace(
+"
+    local i cur prev opts cmd
+    COMPREPLY=()
+    if [[ \"${BASH_VERSINFO[0]}\" -ge 4 ]]; then
+        cur=\"$2\"
+    else
+        cur=\"${COMP_WORDS[COMP_CWORD]}\"
+    fi
+    prev=\"$3\"
+    cmd=\"\"
+    opts=\"\"
+
+    for i in \"${COMP_WORDS[@]:0:COMP_CWORD}\"
+",
+"
+    local i cur prev opts cmd words
+    COMPREPLY=()
+    # $COMP_WORDS breaks on : & = which is bad for roots and flags;
+    # This function fills $words with a version that doesn't
+    _get_comp_words_by_ref -n := words
+    if [[ \"${BASH_VERSINFO[0]}\" -ge 4 ]]; then
+        cur=\"$2\"
+    else
+        cur=\"${words[COMP_CWORD]}\"
+    fi
+    prev=\"$3\"
+    cmd=\"\"
+    opts=\"\"
+
+    for i in \"${words[@]:0:COMP_CWORD}\"
+"
+    )?;
+
+
     // Treat RPC names as subcommands so we don't double-complete
     // Assume RPC names are all letters, numbers, and dots
     // Flags (which have dashes), sensor routes (which have slashes),
@@ -280,10 +315,7 @@ _tio__helper__list_rpcs() {
     local opts=()
     local next=false
     local item
-    # $COMP_WORDS breaks on : & = which is bad for roots and flags;
-    # This function fills $words with a version that doesn't
-    _get_comp_words_by_ref -n := words
-    # Scan completed words only; forward -r/-s/--root/--sensor
+    # Scan completed words; forward -r/-s/--root/--sensor
     for item in \"${words[@]}\"; do
         if $next; then
             opts+=( \"$item\" )
