@@ -3,6 +3,7 @@
 RPC_LIST_FAILED="[RPC_LIST_FAILED]"
 TIO_SIM_ADDRESS="udp4://127.0.0.1"
 PORT_NUM=7855
+FAILS=0
 
 TIO_OPTS=( -r -s -h --root --sensor --help )
 TIO_RPC_OPTS=( ${TIO_OPTS[@]} -t -T -d --req-type --rep-type --debug )
@@ -26,6 +27,7 @@ _fail_test() {
 	echo "Expected: ${EXPECTED[*]}" >&2
 	echo "Actual:   ${ACTUAL[*]}" >&2
 	echo "" >&2
+	FAILS=$(( $FAILS + 1 ))
 }
 
 # Test drive function

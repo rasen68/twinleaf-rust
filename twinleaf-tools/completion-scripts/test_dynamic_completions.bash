@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Requires bash-completion installed under /usr/share (typical on Linux).
-# Safe to run from any cwd; sources sibling scripts relative to this file.
-
-set -euo pipefail
+# Requires bash-completion installed in  /usr/share (typical on Linux)
+# Do not use `set -e` here: bash-completion uses `((expr))` which returns 1 when false.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -13,7 +11,7 @@ source "$SCRIPT_DIR/tio_completions_dynamic.bash" || exit 1
 source "$SCRIPT_DIR/test_helpers.bash" || exit 1
 
 # Kill all existing tio simulate/proxies
-if pgrep ^tio$; then
+if pgrep ^tio$ >/dev/null; then
 	killall tio
 fi
 
@@ -142,5 +140,11 @@ EXPECTED=( ${TIO_CAPTURE_OPTS[@]} test.capture )
 _comp_test tio capture -s /0 --timeout 1 ""
 
 # Shut down our remaining tio proxy
-killall tio
+killall tio &>/dev/null || true
+
+if (( $FAILS > 0 )); then
+	echo "$FAILS test(s) failed" >&2
+	exit 1
+fi
+echo "All dynamic completion tests passed"
 exit 0
