@@ -64,85 +64,86 @@ zcomptest tio rpc dump rpc.name ""
 ### Now test --root functionality with tio simulates ###
 ### Each tests gets a fresh one to minimize delay ###
 _tio_sim
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc --root $TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc -r $TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc -r$TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc -s/0 -r$TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_RPC_OPTS[@]} $RPC_LIST_FAILED )
+EXPECTED=( $RPC_LIST_FAILED )
 zcomptest tio rpc -s/fake -r$TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc dump --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_RPC_LIST_OPTS[@]} )
+used=( --root )
+EXPECTED=( ${(@)TIO_RPC_LIST_OPTS:|used} )
 zcomptest tio rpc list --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
 
 _tio_sim
-EXPECTED=( ${TIO_CAPTURE_OPTS[@]} test.capture )
+EXPECTED=( test.capture )
 zcomptest tio capture --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
 
 ### Connect to tio proxy to test remaining functionality ###
 _tio_sim
 setsid tio proxy $TIO_SIM_ADDRESS:$PORT_NUM </dev/null &>/dev/null &
 
-EXPECTED=( ${TIO_RPC_OPTS[@]} list dump ${TIO_SIM_RPCS[@]} )
+EXPECTED=( list dump ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc ""
 
 EXPECTED=( ${TIO_SIM_DEV_RPCS[@]} )
 zcomptest tio rpc dev
 
-EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc dump ""
 
-EXPECTED=( ${TIO_CAPTURE_OPTS[@]} test.capture )
+EXPECTED=( test.capture )
 zcomptest tio capture ""
 
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc -s/0 ""
 
-EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc dump -s/0 ""
 
-EXPECTED=( ${TIO_CAPTURE_OPTS[@]} test.capture )
+EXPECTED=( test.capture )
 zcomptest tio capture -s/0 ""
 
-EXPECTED=( ${TIO_RPC_OPTS[@]} $RPC_LIST_FAILED )
+EXPECTED=( $RPC_LIST_FAILED )
 zcomptest tio rpc -s /fake ""
 
-EXPECTED=( ${TIO_CAPTURE_OPTS[@]} $RPC_LIST_FAILED )
+EXPECTED=( $RPC_LIST_FAILED )
 zcomptest tio capture -s /fake ""
 
-EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} $RPC_LIST_FAILED )
+EXPECTED=( $RPC_LIST_FAILED )
 zcomptest tio rpc dump -s /fake ""
 
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc -d ""
 
-EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc -s /0 -t u8 ""
 
-EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} ${TIO_SIM_RPCS[@]} )
+EXPECTED=( ${TIO_SIM_RPCS[@]} )
 zcomptest tio rpc dump -s /0 --capture ""
 
-EXPECTED=( a${TIO_CAPTURE_OPTS[@]} test.capture )
+EXPECTED=( test.capture )
 zcomptest tio capture -s /0 --timeout 1 ""
 
 # Shut down our remaining tio proxy

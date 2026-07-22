@@ -127,6 +127,11 @@ compadd() {
 	# -a: find array names after positional args
 	local ai=${args[(i)-a]}
 	if (( ai <= $#args )); then
+		# Skip one-shot --opt=value completions when the user is on
+		# a new empty word.
+		if [[ -n $IPREFIX && -z ${words[CURRENT]} ]]; then
+			return 1
+		fi
 		local -a arrnames=()
 		local ei=$(( $#args + 1 )) i
 		# Find last -/--
@@ -189,7 +194,7 @@ zcomptest() {
 	# Finally send completion input and wait a bit for output
 	# Our fake compadd() will write completions to _TMPFILE
 	zpty -w _tio_test "$@"$'\t'
-	sleep 0.1
+	sleep 0.2
 
 	# Now read _TMPFILE into MATCHES
 	local MATCHES=()
