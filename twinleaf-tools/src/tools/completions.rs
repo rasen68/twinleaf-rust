@@ -1,5 +1,13 @@
 use clap::CommandFactory;
+use clap_complete::{generate_to, Shell};
 use crate::{TioCli, CompletionsCli};
+use std::{
+    env,
+    fs::{create_dir_all, OpenOptions},
+    io::{BufRead, BufReader, Write},
+    path::PathBuf,
+    process::Command,
+};
 
 /// Generate shell completion code and output to stdout
 
@@ -18,7 +26,8 @@ use crate::{TioCli, CompletionsCli};
 ///
 /// We then print this string to stdout, just like clap_complete
 /// normally does, so that the user can source the output in their
-/// shell rc.
+/// shell rc. With `--install` / `--install-all`, the same script is
+/// written to disk and the shell rc is updated instead.
 ///
 /// This currently is only implemented for Bash and Zsh and there
 /// are no plans to attempt to implement it for the other shells,
@@ -34,10 +43,30 @@ use crate::{TioCli, CompletionsCli};
 /// it does not touch any of that.
 
 pub fn run_completions(completions_cli: CompletionsCli) -> eyre::Result<()> {
-    match (completions_cli.r#static, completions_cli.shell) {
+    if completions_cli.install || completions_cli.install_all {
+        return install_completions(
+            completions_cli.shell,
+            completions_cli.install_all,
+            completions_cli.r#static,
+        );
+    }
+
+    let shell = completions_cli
+        .shell
+        .expect("shell is required unless --install/--install-all");
+    print!("{}", generate_script(shell, completions_cli.r#static)?);
+    Ok(())
+}
+
+fn generate_script(shell: clap_complete::Shell, r#static: bool) -> eyre::Result<String> {
+    match (r#static, shell) {
         (false, clap_complete::Shell::Bash) => generate_bash_dynamic(),
         (false, clap_complete::Shell::Zsh) => generate_zsh_dynamic(),
-        (_, shell) => Ok(clap_complete::generate(shell, &mut TioCli::command(), "tio", &mut std::io::stdout())),
+        (_, shell) => {
+            let mut buf = Vec::new();
+            clap_complete::generate(shell, &mut TioCli::command(), "tio", &mut buf);
+            Ok(String::from_utf8(buf)?)
+        }
     }
 }
 
@@ -58,12 +87,12 @@ impl Completions {
         Ok(self)
     }
 
-    pub fn print(&self) {
-        print!("{}", self.completions);
+    pub fn into_string(self) -> String {
+        self.completions
     }
 }
 
-fn generate_bash_dynamic() -> eyre::Result<()> {
+fn generate_bash_dynamic() -> eyre::Result<String> {
     let static_completions = include_str!("../../completion-scripts/tio_completions_static.bash");
     let mut completions = Completions::new(static_completions.to_string());
 
@@ -366,11 +395,10 @@ else
 fi
 ")?;
 
-    completions.print();
-    Ok(())
+    Ok(completions.into_string())
 }
 
-fn generate_zsh_dynamic() -> eyre::Result<()> {
+fn generate_zsh_dynamic() -> eyre::Result<String> {
     let static_completions = include_str!("../../completion-scripts/tio_completions_static.zsh");
     let mut completions = Completions::new(static_completions.to_string());
 
@@ -567,6 +595,287 @@ _tio__subcmd__rpc_commands() {
 "
     )?;
 
-    completions.print();
+    Ok(completions.into_string())
+}
+
+// ---------------------------------------------------------------------------
+// Install helpers (ported from coworker's completions installer)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SupportedShell {
+    Bash,
+    Zsh,
+    Fish,
+    PowerShell,
+}
+
+impl SupportedShell {
+    fn to_clap(self) -> Shell {
+        match self {
+            SupportedShell::Bash => Shell::Bash,
+            SupportedShell::Zsh => Shell::Zsh,
+            SupportedShell::Fish => Shell::Fish,
+            SupportedShell::PowerShell => Shell::PowerShell,
+        }
+    }
+
+    fn from_clap(shell: Shell) -> eyre::Result<Self> {
+        match shell {
+            Shell::Bash => Ok(SupportedShell::Bash),
+            Shell::Zsh => Ok(SupportedShell::Zsh),
+            Shell::Fish => Ok(SupportedShell::Fish),
+            Shell::PowerShell => Ok(SupportedShell::PowerShell),
+            Shell::Elvish => eyre::bail!("--install is not supported for elvish"),
+            _ => eyre::bail!("--install is not supported for this shell"),
+        }
+    }
+}
+
+fn command_exists(cmd: &str) -> bool {
+    which::which(cmd).is_ok()
+}
+
+// Detects the shell the user is currently running (based on $SHELL).
+// Note: this reflects the login shell, not necessarily the active runtime shell.
+fn detect_current_shell() -> Option<SupportedShell> {
+    let shell = env::var("SHELL").ok()?;
+    match shell.rsplit('/').next()? {
+        "bash" => Some(SupportedShell::Bash),
+        "zsh" => Some(SupportedShell::Zsh),
+        "fish" => Some(SupportedShell::Fish),
+        "pwsh" | "powershell" => Some(SupportedShell::PowerShell),
+        _ => None,
+    }
+}
+
+// Returns shells that exist on the system PATH.
+// Used when `--install-all` is enabled or detection fails.
+fn detect_installed_shells() -> Vec<SupportedShell> {
+    let mut shells = Vec::new();
+
+    if command_exists("bash") {
+        shells.push(SupportedShell::Bash);
+    }
+    if command_exists("zsh") {
+        shells.push(SupportedShell::Zsh);
+    }
+    if command_exists("fish") {
+        shells.push(SupportedShell::Fish);
+    }
+    if command_exists("pwsh") || command_exists("powershell") {
+        shells.push(SupportedShell::PowerShell);
+    }
+
+    shells
+}
+
+fn get_os() -> &'static str {
+    env::consts::OS
+}
+
+fn bash_paths() -> (PathBuf, Option<PathBuf>) {
+    let home = PathBuf::from(env::var("HOME").expect("HOME not set"));
+    let mut rc = home.clone();
+    rc.push(".bashrc");
+    let os = get_os();
+
+    if os == "macos" {
+        let brew = PathBuf::from("/opt/homebrew/etc/bash_completion.d/");
+        if brew.exists() {
+            return (brew, Some(rc));
+        }
+
+        let intel = PathBuf::from("/usr/local/etc/bash_completion.d/");
+        if intel.exists() {
+            return (intel, Some(rc));
+        }
+    }
+
+    let mut dir = home.clone();
+    // Typo fix vs coworker fork: bash-completion/completions (not bash-completion.completions)
+    dir.push(".local/share/bash-completion/completions/");
+    (dir, Some(rc))
+}
+
+fn zsh_paths() -> (PathBuf, Option<PathBuf>) {
+    let home = PathBuf::from(env::var("HOME").expect("HOME not set"));
+    let mut dir = home.clone();
+    dir.push(".zsh/completions/");
+    let mut rc = home.clone();
+    rc.push(".zshrc");
+    (dir, Some(rc))
+}
+
+fn fish_paths() -> (PathBuf, Option<PathBuf>) {
+    let mut home = PathBuf::from(env::var("HOME").expect("HOME not set"));
+    home.push(".config/fish/completions/");
+    (home, None)
+}
+
+fn powershell_paths() -> (PathBuf, Option<PathBuf>) {
+    let output = Command::new("pwsh")
+        .args(["-NoProfile", "-Command", "$PROFILE"])
+        .output()
+        .or_else(|_| {
+            Command::new("powershell")
+                .args(["-NoProfile", "-Command", "$PROFILE"])
+                .output()
+        });
+    if let Ok(out) = output {
+        if out.status.success() {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path.is_empty() {
+                return (PathBuf::new(), Some(PathBuf::from(path)));
+            }
+        }
+    }
+    let mut fallback = PathBuf::from(env::var("HOME").unwrap());
+    fallback.push("Documents/PowerShell/Microsoft.PowerShell_profile.ps1");
+    (PathBuf::new(), Some(fallback))
+}
+
+// Appends shell configuration only if marker is not already present.
+// Prevents duplicate entries when reinstalling completions.
+fn update_config(rc_path: &PathBuf, marker: &str, lines: &[String]) -> std::io::Result<()> {
+    let mut exists = String::new();
+
+    if rc_path.exists() {
+        let file = OpenOptions::new().read(true).open(rc_path)?;
+        let reader = BufReader::new(file);
+        for line in reader.lines().flatten() {
+            exists.push_str(&line);
+            exists.push('\n');
+        }
+    }
+
+    if exists.contains(marker) {
+        return Ok(());
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(rc_path)?;
+
+    writeln!(file, "\n# >>> tio completions >>>")?;
+    for l in lines {
+        writeln!(file, "{}", l)?;
+    }
+    writeln!(file, "# <<<<<<")?;
+    Ok(())
+}
+
+fn write_completion_script(
+    shell: SupportedShell,
+    r#static: bool,
+    dir: &PathBuf,
+) -> eyre::Result<()> {
+    let clap_shell = shell.to_clap();
+    // Use generate_to for static (and for shells without dynamic support).
+    // For dynamic bash/zsh, write our patched script under the same filename
+    // generate_to would have used.
+    let use_dynamic = !r#static
+        && matches!(shell, SupportedShell::Bash | SupportedShell::Zsh);
+
+    if use_dynamic {
+        let file_name = match shell {
+            SupportedShell::Bash => "tio.bash".to_string(),
+            SupportedShell::Zsh => "_tio".to_string(),
+            _ => unreachable!(),
+        };
+        let path = dir.join(file_name);
+        let script = generate_script(clap_shell, false)?;
+        std::fs::write(&path, script)?;
+    } else {
+        let mut cmd = TioCli::command();
+        generate_to(clap_shell, &mut cmd, "tio", dir)?;
+    }
+    Ok(())
+}
+
+// Installs completion scripts for a specific shell and updates shell configuration when required
+fn install_shell_scripts(shell: SupportedShell, r#static: bool) -> eyre::Result<()> {
+    match shell {
+        SupportedShell::Bash => {
+            let (dir, rc) = bash_paths();
+            create_dir_all(&dir)?;
+            write_completion_script(shell, r#static, &dir)?;
+            if let Some(rc) = rc {
+                update_config(
+                    &rc,
+                    "tio completions",
+                    &[format!("source {}", dir.join("tio.bash").display())],
+                )?;
+            }
+        }
+        SupportedShell::Zsh => {
+            let (dir, rc) = zsh_paths();
+            create_dir_all(&dir)?;
+            write_completion_script(shell, r#static, &dir)?;
+            if let Some(rc) = rc {
+                update_config(
+                    &rc,
+                    "tio completions",
+                    &[
+                        format!("fpath=({} $fpath)", dir.display()),
+                        "autoload -Uz compinit && compinit".to_string(),
+                    ],
+                )?;
+            }
+        }
+        SupportedShell::Fish => {
+            let (dir, _) = fish_paths();
+            create_dir_all(&dir)?;
+            write_completion_script(shell, r#static, &dir)?;
+        }
+        SupportedShell::PowerShell => {
+            let (_, rc) = powershell_paths();
+            if let Some(rc) = rc {
+                let mut completions_dir = PathBuf::from(env::var("HOME").unwrap());
+                completions_dir.push(".config/powershell/completions");
+                create_dir_all(&completions_dir)?;
+                write_completion_script(shell, r#static, &completions_dir)?;
+                let script_path = completions_dir.join("_tio.ps1");
+                update_config(
+                    &rc,
+                    "tio completions",
+                    &[format!(". \"{}\"", script_path.to_string_lossy())],
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn target_shells(shell: Option<Shell>, install_all: bool) -> eyre::Result<Vec<SupportedShell>> {
+    if let Some(shell) = shell {
+        return Ok(vec![SupportedShell::from_clap(shell)?]);
+    }
+
+    if install_all {
+        return Ok(detect_installed_shells());
+    }
+
+    Ok(detect_current_shell()
+        .map(|s| vec![s])
+        .unwrap_or_else(detect_installed_shells))
+}
+
+fn install_completions(
+    shell: Option<Shell>,
+    install_all: bool,
+    r#static: bool,
+) -> eyre::Result<()> {
+    let targets = target_shells(shell, install_all)?;
+    eyre::ensure!(
+        !targets.is_empty(),
+        "no supported shells detected; pass an explicit shell (e.g. `tio completions --install bash`)"
+    );
+
+    for shell in targets {
+        install_shell_scripts(shell, r#static)?;
+    }
+
     Ok(())
 }
