@@ -20,6 +20,8 @@ _tio_sim() {
 	killall tio &>/dev/null
 	PORT_NUM=$(( $PORT_NUM + 1 ))
 	setsid tio simulate --port $PORT_NUM </dev/null &>/dev/null &
+	# Allow the socket to bind before completion runs `tio rpc list`
+	sleep 0.15
 }
 
 _fail_test() {
@@ -180,6 +182,8 @@ zcomptest() {
 
 	zpty -d _tio_test 2>/dev/null
 	zpty _tio_test zsh -f -i
+	# zsh -f keeps the environment, but be explicit so `tio rpc list` works
+	zpty -w _tio_test "export PATH=${(q)PATH}"$'\n'
 	zpty -w _tio_test "source ${(q)setup}; : > ${(q)ready}"$'\n'
 	# Poll for ready file
 	local -F _t=0
@@ -191,10 +195,27 @@ zcomptest() {
 	# Brief settle so the shell is back at the prompt before we type
 	sleep 0.02
 
-	# Finally send completion input and wait a bit for output
-	# Our fake compadd() will write completions to _TMPFILE
+	# Finally send completion input. Matcher retries can keep appending for a
+	# while; wait until the capture file stops growing (or timeout).
 	zpty -w _tio_test "$@"$'\t'
-	sleep 0.2
+	local -F _t=0
+	local prev=-1 cur=0 stable=0
+	while (( _t < 3 )); do
+		sleep 0.03
+		_t=$(( _t + 0.03 ))
+		if [[ -f $_TMPFILE ]]; then
+			cur=$(wc -c < "$_TMPFILE")
+		else
+			cur=0
+		fi
+		if (( cur == prev && cur > 0 )); then
+			(( stable++ ))
+			(( stable >= 3 )) && break
+		else
+			stable=0
+		fi
+		prev=$cur
+	done
 
 	# Now read _TMPFILE into MATCHES
 	local MATCHES=()

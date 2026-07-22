@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
-# Requires bash-completion installed in  /usr/share (typical on Linux)
+# Requires bash-completion installed in /usr/share (typical on Linux).
 # Do not use `set -e` here: bash-completion uses `((expr))` which returns 1 when false.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Find bash_completion library for _get_comp_words_by_nref,
-# our test helpers,
-# and of course tio_completions_dynamic.bash for _tio
 source /usr/share/bash-completion/bash_completion || exit 1
 source "$SCRIPT_DIR/test_helpers.sh" || exit 1
 source "$SCRIPT_DIR/tio_completions_dynamic.bash" || exit 1
 
-# Kill all existing tio simulate/proxies
 if pgrep ^tio$ >/dev/null; then
 	killall tio
 fi
 
-### First test with no tio simulate, no RPCs findable ###
+### Offline tests (no real rpc completions)
+
 EXPECTED=( ${TIO_RPC_OPTS[@]} list dump $RPC_LIST_FAILED )
 bcomptest tio rpc ""
 
+# After an rpc name: rpcname subcmd — options + [ARG], no more rpc names
 EXPECTED=( ${TIO_RPC_OPTS[@]} [ARG])
 bcomptest tio rpc rpc.name ""
 
@@ -29,6 +27,7 @@ bcomptest tio rpc -s /0 ""
 EXPECTED=( ${TIO_RPC_TYPES[@]} )
 bcomptest tio rpc -t ""
 
+# cur=-* gates _tio__helper__append_rpcs: options only, no rpc list call
 EXPECTED=( ${TIO_RPC_OPTS[@]} )
 bcomptest tio rpc -
 
@@ -38,6 +37,7 @@ bcomptest tio capture ""
 EXPECTED=( ${TIO_CAPTURE_OPTS[@]} $RPC_LIST_FAILED )
 bcomptest tio capture -s /0 ""
 
+# Name already supplied: options only
 EXPECTED=( ${TIO_CAPTURE_OPTS[@]} )
 bcomptest tio capture rpc.name ""
 
@@ -56,8 +56,9 @@ bcomptest tio rpc dump -s /0 ""
 EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} )
 bcomptest tio rpc dump rpc.name ""
 
-### Now test --root functionality with tio simulates ###
-### Each tests gets a fresh one to minimize delay ###
+### Live simulate: root/sensor forwarding
+# --root= / --root / -r / stuck -rURL / -sPATH all forward into tio rpc list
+
 _tio_sim
 EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
 bcomptest tio rpc --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
@@ -86,21 +87,25 @@ _tio_sim
 EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} ${TIO_SIM_RPCS[@]} )
 bcomptest tio rpc dump --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
 
+# list never appends rpc names
 _tio_sim
 EXPECTED=( ${TIO_RPC_LIST_OPTS[@]} )
 bcomptest tio rpc list --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
 
+# capture lists with --capture-only
 _tio_sim
 EXPECTED=( ${TIO_CAPTURE_OPTS[@]} test.capture )
 bcomptest tio capture --root=$TIO_SIM_ADDRESS:$PORT_NUM ""
 
-### Connect to tio proxy to test remaining functionality ###
+### Connect proxy, so we don't need to use --root every time
+
 _tio_sim
 setsid tio proxy $TIO_SIM_ADDRESS:$PORT_NUM </dev/null &>/dev/null &
 
 EXPECTED=( ${TIO_RPC_OPTS[@]} list dump ${TIO_SIM_RPCS[@]} )
 bcomptest tio rpc ""
 
+# Prefix filter on COMPREPLY
 EXPECTED=( ${TIO_SIM_DEV_RPCS[@]} )
 bcomptest tio rpc dev
 
@@ -128,6 +133,7 @@ bcomptest tio capture -s /fake ""
 EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} $RPC_LIST_FAILED )
 bcomptest tio rpc dump -s /fake ""
 
+# Flags/values must not be parsed as the rpc name (rpc_opt / $next)
 EXPECTED=( ${TIO_RPC_OPTS[@]} ${TIO_SIM_RPCS[@]} )
 bcomptest tio rpc -d ""
 
@@ -140,7 +146,6 @@ bcomptest tio rpc dump -s /0 --capture ""
 EXPECTED=( ${TIO_CAPTURE_OPTS[@]} test.capture )
 bcomptest tio capture -s /0 --timeout 1 ""
 
-# Shut down our remaining tio proxy
 killall tio &>/dev/null || true
 
 if (( $FAILS > 0 )); then
