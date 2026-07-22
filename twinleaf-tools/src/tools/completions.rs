@@ -68,6 +68,7 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     let mut completions = Completions::new(static_completions.to_string());
 
     // Replace COMP_WORDS with words from _get_comp_words_by_ref
+    // Note that this may fail for non-typical scenarios w/ : and =
     // Also set up rpc_opt for completing rpc names/subcmds
     // And next for parsing tio rpc options w/ args
     completions.replace(
