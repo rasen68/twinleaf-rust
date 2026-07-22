@@ -67,6 +67,12 @@ used=( --name-only )
 EXPECTED=( ${(@)TIO_RPC_LIST_OPTS:|used} )
 zcomptest tio rpc list --name-only -
 
+# Regression: shared -s/-r/-h with parent `rpc` must not garble list opts
+# (zsh omits the short -s once used, but still offers --sensor)
+used=( -s )
+EXPECTED=( ${(@)TIO_RPC_LIST_OPTS:|used} )
+zcomptest tio rpc list -s /0 -
+
 EXPECTED=( ${TIO_RPC_DUMP_OPTS[@]} )
 zcomptest tio rpc dump -
 
