@@ -10,7 +10,7 @@ cd "$SCRIPT_DIR"
 
 TIO="$SCRIPT_DIR/../target/debug/tio"
 COMP="$SCRIPT_DIR/completion-scripts/tio_completions"
-TEST_DYNAMIC="$SCRIPT_DIR/completion-scripts/test_dynamic_completions.bash"
+TESTS="$SCRIPT_DIR/completion-scripts/test_dynamic_completions"
 
 # Ensure the just-built tio is preferred over any other on PATH (tests invoke `tio`)
 export PATH="$(cd "$(dirname "$TIO")" && pwd):$PATH"
@@ -58,10 +58,11 @@ echo "Generating dynamic scripts"
 # ensure generated scripts work in bash / zsh
 echo "Testing bash scripts"
 bash -n "$COMP"_dynamic.bash
-bash "$TEST_DYNAMIC" >/dev/null # fails go to stderr
+bash "$TESTS".bash >/dev/null && echo "Passed!" # fails go to stderr
 
 echo "Testing zsh scripts"
 zsh -n "$COMP"_dynamic.zsh
+zsh "$TESTS".zsh >/dev/null && echo "Passed!" # fails go to stderr
 
 # optional autocommit
 if $commit; then
