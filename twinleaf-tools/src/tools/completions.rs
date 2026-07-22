@@ -228,7 +228,7 @@ fn generate_bash_dynamic() -> eyre::Result<()> {
     ")?;
 
 
-    // Replae dump subcmd's mandatory <RPC_NAME> placeholder
+    // Replace dump subcmd's mandatory <RPC_NAME> placeholder
     completions.replace(
         "<RPC_NAME>",
         "$(_tio__helper__append_rpcs --name-only)"
