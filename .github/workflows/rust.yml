@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libudev-dev zsh
+          sudo apt-get install -y libudev-dev zsh bash-completion
 
       - name: Generate and check completions
         working-directory: twinleaf-tools
