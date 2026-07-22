@@ -47,6 +47,10 @@ zcomptest tio rpc du
 EXPECTED=( )
 zcomptest tio rpc rpc.name ""
 
+# Same arm with -: rpc opts including -h/--help
+EXPECTED=( ${TIO_RPC_OPTS[@]} )
+zcomptest tio rpc rpc.name -
+
 EXPECTED=( ${TIO_RPC_TYPES[@]} )
 zcomptest tio rpc -t ""
 
